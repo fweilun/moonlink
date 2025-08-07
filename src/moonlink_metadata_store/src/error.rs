@@ -1,10 +1,13 @@
 use serde_json::Error as SerdeJsonError;
 use std::sync::Arc;
 use thiserror::Error;
+
+#[cfg(feature = "metadata-postgres")]
 use tokio_postgres::Error as TokioPostgresError;
 
 #[derive(Clone, Debug, Error)]
 pub enum Error {
+    #[cfg(feature = "metadata-postgres")]
     #[error("tokio postgres error: {source}")]
     TokioPostgres { source: Arc<TokioPostgresError> },
 
@@ -35,6 +38,7 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+#[cfg(feature = "metadata-postgres")]
 impl From<TokioPostgresError> for Error {
     fn from(source: TokioPostgresError) -> Self {
         Error::TokioPostgres {

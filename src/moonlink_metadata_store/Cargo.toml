@@ -5,7 +5,9 @@ edition = { workspace = true }
 license = { workspace = true }
 
 [features]
-default = ["storage-fs", "metadata-postgres", "metadata-sqlite"]
+default = ["storage-fs", "metadata-sqlite"]
+storage-all = ["storage-fs", "metadata-postgres", "metadata-sqlite"]
+test-utils = []
 
 storage-s3 = ["moonlink/storage-s3"]
 storage-gcs = ["moonlink/storage-gcs"]
@@ -31,3 +33,13 @@ url = { workspace = true }
 
 [dev-dependencies]
 serial_test = { workspace = true }
+
+[[test]]
+name = "test_pg_metadata_store_utils"
+path = "tests/test_pg_metadata_store_utils.rs"
+required-features = ["metadata-postgres"]
+
+[[test]]
+name = "test_pg_metadata_store"
+path = "tests/test_pg_metadata_store.rs"
+required-features = ["metadata-postgres"]
