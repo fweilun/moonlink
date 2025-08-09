@@ -182,8 +182,6 @@ impl TableHandler {
 
         // Process events until the receiver is closed or a Shutdown event is received
         while let Some(event) = event_receiver.recv().await {
-            // Process events from the queue
-
             // Record event if requested.
             if let Some(replay_tx) = &event_replay_tx {
                 replay_tx.send(event.clone()).unwrap();
