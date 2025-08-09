@@ -11,9 +11,9 @@ pub(crate) fn get_default_parquet_properties() -> WriterProperties {
     WriterProperties::builder()
         .set_compression(DEFAULT_COMPRESSION)
         .set_dictionary_enabled(true)
-        .set_bloom_filter_enabled(true)
         .set_dictionary_page_size_limit(DEFAULT_ROW_GROUP_SIZE / 100)
-        .set_bloom_filter_fpp(0.01)
+        // .set_bloom_filter_enabled(true)
+        // .set_bloom_filter_fpp(0.01)
         .set_writer_version(parquet::file::properties::WriterVersion::PARQUET_1_0)
         .build()
 }
