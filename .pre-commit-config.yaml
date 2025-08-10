@@ -15,13 +15,6 @@ repos:
         files: '\.toml$'
         entry: cargo sort --workspace
         pass_filenames: false
-      # Split clippy command into two parts, because `--fix` suppress the "warning to error" conversion.
-      - id: clipper-fixlint
-        name: clipper-fixlint
-        language: system
-        files: '\.rs$'
-        entry: cargo clippy --all-targets --all-features --fix --allow-dirty --allow-staged
-        pass_filenames: false
       - id: clipper-check
         name: clipper-check
         language: system
