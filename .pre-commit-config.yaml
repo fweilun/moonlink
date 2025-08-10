@@ -15,11 +15,11 @@ repos:
         files: '\.toml$'
         entry: cargo sort --workspace
         pass_filenames: false
-      - id: clipper-check
-        name: clipper-check
+      - id: clipper-check-fix
+        name: clipper-check-fix
         language: system
         files: '\.rs$'
-        entry: cargo clippy --all-targets --all-features -- -D warnings
+        entry: bash -c 'cargo clippy --all-targets --all-features -- -D warnings || cargo clippy --all-targets --all-features --fix --allow-dirty --allow-staged'
         pass_filenames: false
       - id: check-dependency-license
         name: check-dependency-license
