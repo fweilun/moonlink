@@ -126,7 +126,10 @@ impl MoonlinkRow {
                         Some(array.value(idx))
                     }
                 } else {
-                    None
+                    panic!(
+                        "Failed to parse column into supported Arrow list type. Got: {:?}",
+                        column.data_type()
+                    );
                 };
 
                 if let Some(child) = child_opt {
