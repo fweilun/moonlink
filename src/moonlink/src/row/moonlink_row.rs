@@ -157,7 +157,7 @@ impl MoonlinkRow {
     /// Check whether the `offset`-th record batch matches the current moonlink row.
     /// The `batch` here has been projected.
     fn equals_record_batch_at_offset_impl(&self, batch: &RecordBatch, offset: usize) -> bool {
-        ma::assert_ge!(offset, batch.num_rows());
+        ma::assert_lt!(offset, batch.num_rows());
 
         self.values
             .iter()
