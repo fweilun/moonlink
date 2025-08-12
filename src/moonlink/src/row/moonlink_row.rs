@@ -3,6 +3,7 @@ use ahash::AHasher;
 use arrow::array::Array;
 use arrow::datatypes::Field;
 use arrow::record_batch::RecordBatch;
+use more_asserts as ma;
 use parquet::arrow::async_reader::ParquetRecordBatchStreamBuilder;
 use parquet::arrow::ProjectionMask;
 use serde::{Deserialize, Serialize};
@@ -156,9 +157,7 @@ impl MoonlinkRow {
     /// Check whether the `offset`-th record batch matches the current moonlink row.
     /// The `batch` here has been projected.
     fn equals_record_batch_at_offset_impl(&self, batch: &RecordBatch, offset: usize) -> bool {
-        if offset >= batch.num_rows() {
-            panic!("Offset is out of bounds");
-        }
+        ma::assert_ge!(offset, batch.num_rows());
 
         self.values
             .iter()
