@@ -23,7 +23,7 @@ if docker image inspect moonlink:dev >/dev/null 2>&1; then
     echo "==> Local image 'moonlink:dev' already exists."
 else
     echo "==> Building local image 'moonlink:dev'"
-    docker build -t moonlink:dev -f Dockerfile.dev .
+    docker build -t moonlink:dev -f Dockerfile.aarch64 .
 fi
 
 

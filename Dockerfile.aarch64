@@ -1,7 +1,5 @@
 # Build command: docker build -f Dockerfile.aarch64 --platform linux/aarch64 -t moonlink-deployment:latest .
 
-# TODO(hjiang): Use release build for docker images, update after official release.
-
 # Build base image for compilation and linking.
 FROM mcr.microsoft.com/devcontainers/rust:latest AS builder
 
