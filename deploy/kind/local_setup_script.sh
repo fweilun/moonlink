@@ -4,7 +4,7 @@ set -euo pipefail
 # === Configurable parameters (override via environment variables) ===
 CLUSTER="${CLUSTER:-kind-1}"
 NS="${NS:-moonlink}"
-MANIFEST_DIR="${MANIFEST_DIR:-deploy}"
+MANIFEST_DIR="${MANIFEST_DIR:-k8s}"
 WAIT_TIMEOUT="${WAIT_TIMEOUT:-60s}"
 PORT_FWD="${PORT_FWD:-false}"
 
@@ -30,10 +30,10 @@ fi
 echo "==> Loading image into kind nodes"
 kind load docker-image moonlink:dev --name kind-1
 
-echo "==> Applying Kubernetes manifests from: $MANIFEST_DIR/kind-cluster.yaml"
-kubectl apply -f deploy/kind-cluster.yaml -n "$NS"
+echo "==> Applying Kubernetes manifests from: $MANIFEST_DIR/moonlink_deployment.yaml"
+kubectl apply -f $MANIFEST_DIR/moonlink_deployment.yaml -n "$NS"
 
-DEPLOY_NAME="$(yq '.metadata.name' "$MANIFEST_DIR/kind-cluster.yaml")"
+DEPLOY_NAME="$(yq '.metadata.name' "$MANIFEST_DIR/moonlink_deployment.yaml")"
 echo "==> Waiting for deployment rollout: $DEPLOY_NAME"
 kubectl rollout status -n "$NS" deploy/"$DEPLOY_NAME" --timeout="$WAIT_TIMEOUT"
 
