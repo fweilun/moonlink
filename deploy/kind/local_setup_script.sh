@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# === Configurable parameters (override via environment variables) ===
-CLUSTER="${CLUSTER:-kind-1}"
+# === Configurable parameters ===
+CLUSTER="${CLUSTER:-kind-moonlink-dev}"
 NS="${NS:-moonlink}"
 MANIFEST_DIR="${MANIFEST_DIR:-deploy/kind}"
 WAIT_TIMEOUT="${WAIT_TIMEOUT:-60s}"
@@ -30,7 +30,7 @@ else
 fi
 
 echo "==> Loading image into kind nodes"
-kind load docker-image moonlink:dev --name kind-1
+kind load docker-image moonlink:dev --name kind-moonlink-dev
 
 echo "==> Applying Kubernetes manifests from: $DEPLOYMENT_CONFIG_DIR and $SERVICE_CONFIG_DIR"
 kubectl apply -f "$DEPLOYMENT_CONFIG_DIR" -f "$SERVICE_CONFIG_DIR" -n "$NS"
