@@ -1,40 +1,57 @@
-## Moonlink on kind — Deployment Guide
+# Moonlink on kind — Setup & Cleanup
 
-### Overview
-This code and configuration deploy Moonlink to a local kind cluster. It is revised from `deploy/gcp/dev` for a local kind environment.
+A tiny, reproducible workflow to **deploy** Moonlink to a local [kind](https://kind.sigs.k8s.io/) cluster and **tear it down** cleanly. Two scripts only:
 
-### Setup
+- `local_setup_script.sh` — creates/ensures a kind cluster, loads the `moonlink:dev` image, applies manifests, and waits for rollout.
+- `cleanup.sh` — deletes resources from your manifests, and can optionally nuke the namespace and/or the entire kind cluster.
+
+---
+
+## Prerequisites
+
+- **Docker** (v20+)  
+- **kind** (v0.20+)  
+- **kubectl** (v1.27+) with access to your local kind cluster  
+- **yq** (for reading the deployment name from YAML in the setup script)
+
+> Verify:
+> ```bash
+> docker --version && kind --version && kubectl version --client=true --output=yaml && yq --version
+> ```
+
+---
+
+## Quick Start
+
 ```bash
-# Ensure kind cluster exists (default: kind-moonlink-dev)
-kind get clusters | grep -qx kind-moonlink-dev || kind create cluster --name kind-moonlink-dev
+# 1) Create/ensure cluster, build & load image, deploy manifests, wait for rollout
+./deploy/kind/local_setup_script.sh
 
-# Ensure namespace exists (default: moonlink)
-kubectl get ns moonlink >/dev/null 2>&1 || kubectl create ns moonlink
-
-# Build and load the local image on macOS with arm (default image tag: moonlink:dev)
-docker build -t moonlink:dev -f Dockerfile.aarch64 .
-kind load docker-image moonlink:dev --name kind-moonlink-dev
-
-# Apply manifests (default manifest dir: deploy/kind)
-kubectl apply -f deploy/kind/deployment/moonlink_deployment.yaml -n moonlink
-kubectl apply -f deploy/kind/service/moonlink_service.yaml -n moonlink
-
-# Check the deployment
+# 2) See what's running
 kubectl get pods,svc -n moonlink
+
+# 3) Clean up (resources only)
+./deploy/kind/cleanup.sh
 ```
 
-### Cleanup
+## Additional Settings
+
+Use these flags with the cleanup script:
+
 ```bash
-# Option A: delete the entire kind cluster
-kind delete cluster --name kind-moonlink-dev
+# Delete the entire kind cluster (takes precedence if both are set)
+NUKE_CLUSTER=true ./deploy/kind/cleanup.sh
 
-# Option B: delete only the 'moonlink' namespace
-kubectl delete ns moonlink --ignore-not-found
-
-# Option C: delete only the deployed resources (keep namespace)
-kubectl delete -n moonlink -f deploy/kind/deployment/moonlink_deployment.yaml --ignore-not-found --wait=true
-[ -f deploy/kind/service/moonlink_service.yaml ] && kubectl delete -n moonlink -f deploy/kind/service/moonlink_service.yaml --ignore-not-found --wait=true
-
-# Show what's left (if any)
-kubectl get all,cm,secret,pvc -n moonlink || true
+# Delete only the 'moonlink' namespace
+NUKE_NAMESPACE=true ./deploy/kind/cleanup.sh
 ```
+
+---
+
+## Manifest Structure
+
+The deployment uses the following manifests:
+- `deplyment/moonlink_deployment.yaml` - Main deployment with moonlink, nginx, and postgres containers
+- `service/moonlink_service.yaml` - Service to expose the deployment ports
+
+> **Note**: The service selector currently doesn't match the deployment labels. You may need to update the service selector from `app: moonlink-deployment` to `app: moonlink-dev` to match the deployment.
