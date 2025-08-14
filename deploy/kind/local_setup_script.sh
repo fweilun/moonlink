@@ -4,9 +4,12 @@ set -euo pipefail
 # === Configurable parameters (override via environment variables) ===
 CLUSTER="${CLUSTER:-kind-1}"
 NS="${NS:-moonlink}"
-MANIFEST_DIR="${MANIFEST_DIR:-k8s}"
+MANIFEST_DIR="${MANIFEST_DIR:-deploy/kind}"
 WAIT_TIMEOUT="${WAIT_TIMEOUT:-60s}"
 PORT_FWD="${PORT_FWD:-false}"
+
+DEPLOYMENT_CONFIG_DIR="${MANIFEST_DIR}/deployment/moonlink_deployment.yaml"
+SERVICE_CONFIG_DIR="${MANIFEST_DIR}/service/moonlink_service.yaml"
 
 echo "==> Checking if kind cluster exists: $CLUSTER"
 if ! kind get clusters | grep -qx "$CLUSTER"; then
@@ -26,18 +29,19 @@ else
     docker build -t moonlink:dev -f Dockerfile.aarch64 .
 fi
 
-
 echo "==> Loading image into kind nodes"
 kind load docker-image moonlink:dev --name kind-1
 
-echo "==> Applying Kubernetes manifests from: $MANIFEST_DIR/moonlink_deployment.yaml"
-kubectl apply -f $MANIFEST_DIR/moonlink_deployment.yaml -n "$NS"
+echo "==> Applying Kubernetes manifests from: $DEPLOYMENT_CONFIG_DIR and $SERVICE_CONFIG_DIR"
+kubectl apply -f "$DEPLOYMENT_CONFIG_DIR" -f "$SERVICE_CONFIG_DIR" -n "$NS"
 
-DEPLOY_NAME="$(yq '.metadata.name' "$MANIFEST_DIR/moonlink_deployment.yaml")"
+DEPLOY_NAME="$(yq '.metadata.name' "$DEPLOYMENT_CONFIG_DIR")"
+
 echo "==> Waiting for deployment rollout: $DEPLOY_NAME"
 kubectl rollout status -n "$NS" deploy/"$DEPLOY_NAME" --timeout="$WAIT_TIMEOUT"
 
 echo "==> Current Pods and Services in namespace: $NS"
 kubectl get pods,svc -n "$NS"
 
+echo
 echo "Setup completed successfully."
