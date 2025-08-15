@@ -6,10 +6,9 @@ CLUSTER="${CLUSTER:-kind-moonlink-dev}"
 NS="${NS:-moonlink}"
 MANIFEST_DIR="${MANIFEST_DIR:-deploy/kind}"
 WAIT_TIMEOUT="${WAIT_TIMEOUT:-60s}"
-PORT_FWD="${PORT_FWD:-false}"
 
-DEPLOYMENT_CONFIG_DIR="${MANIFEST_DIR}/deployment/moonlink_deployment.yaml"
-SERVICE_CONFIG_DIR="${MANIFEST_DIR}/service/moonlink_service.yaml"
+DEPLOYMENT_CONFIG_FILE="${MANIFEST_DIR}/deployment/moonlink_deployment.yaml"
+SERVICE_CONFIG_FILE="${MANIFEST_DIR}/service/moonlink_service.yaml"
 
 echo "==> Checking if kind cluster exists: $CLUSTER"
 if ! kind get clusters | grep -qx "$CLUSTER"; then
@@ -32,10 +31,10 @@ fi
 echo "==> Loading image into kind nodes"
 kind load docker-image moonlink:dev --name kind-moonlink-dev
 
-echo "==> Applying Kubernetes manifests from: $DEPLOYMENT_CONFIG_DIR and $SERVICE_CONFIG_DIR"
-kubectl apply -f "$DEPLOYMENT_CONFIG_DIR" -f "$SERVICE_CONFIG_DIR" -n "$NS"
+echo "==> Applying Kubernetes manifests from: $DEPLOYMENT_CONFIG_FILE and $SERVICE_CONFIG_FILE"
+kubectl apply -f "$DEPLOYMENT_CONFIG_FILE" -f "$SERVICE_CONFIG_FILE" -n "$NS"
 
-DEPLOY_NAME="$(yq '.metadata.name' "$DEPLOYMENT_CONFIG_DIR")"
+DEPLOY_NAME="$(yq '.metadata.name' "$DEPLOYMENT_CONFIG_FILE")"
 
 echo "==> Waiting for deployment rollout: $DEPLOY_NAME"
 kubectl rollout status -n "$NS" deploy/"$DEPLOY_NAME" --timeout="$WAIT_TIMEOUT"

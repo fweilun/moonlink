@@ -34,6 +34,32 @@ kubectl get pods,svc -n moonlink
 ./deploy/kind/cleanup.sh
 ```
 
+## Environment Variables - Setup & Cleanup
+
+- **CLUSTER**  
+  Name of the Kubernetes cluster.  
+  *Default:* `kind-moonlink-dev`
+
+- **NS**  
+  Namespace in the cluster.  
+  *Default:* `moonlink`
+
+- **MANIFEST_DIR**  
+  Directory containing Kubernetes manifests.  
+  *Default:* `deploy/kind`
+
+- **WAIT_TIMEOUT**  
+  Maximum time to wait for deployment to be ready.  
+  *Default:* `60s`
+
+- **DEPLOYMENT_CONFIG_FILE**  
+  Path to the deployment manifest file.  
+  *Default:* `${MANIFEST_DIR}/deployment/moonlink_deployment.yaml`
+
+- **SERVICE_CONFIG_FILE**  
+  Path to the service manifest file.  
+  *Default:* `${MANIFEST_DIR}/service/moonlink_service.yaml`
+
 ## Additional Settings
 
 Use these flags with the cleanup script:
