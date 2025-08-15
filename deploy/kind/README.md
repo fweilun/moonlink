@@ -14,7 +14,7 @@ A tiny, reproducible workflow to **deploy** Moonlink to a local [kind](https://k
 - kubectl
 - yq
 
-> Verify:
+> **Verify installation:**
 > ```bash
 > docker --version && kind --version && kubectl version --client=true --output=yaml && yq --version
 > ```
@@ -27,7 +27,7 @@ A tiny, reproducible workflow to **deploy** Moonlink to a local [kind](https://k
 # 1) Create/ensure cluster & namespace, build & load image, deploy manifests, wait for rollout
 ./deploy/kind/local_setup_script.sh
 
-# 2) See what's running
+# 2) Verify deployment status
 kubectl get pods,svc -n moonlink
 
 # 3) Clean up (resources only)
@@ -73,6 +73,26 @@ NUKE_NAMESPACE=true ./deploy/kind/cleanup.sh
 ```
 
 ---
+
+## Verify Deployment Status
+
+Test connectivity to different service ports:
+
+```bash
+# Test health endpoint on port 3030
+kubectl port-forward -n moonlink svc/moonlink-service 3030:3030
+curl 127.0.0.1:3030/health
+
+# Test connectivity on port 3031
+kubectl port-forward -n moonlink svc/moonlink-service 3031:3031
+nc -vz 127.0.0.1 3031
+ 
+# Test web interface on port 8080
+kubectl port-forward -n moonlink svc/moonlink-service 8080:8080
+kubectl get pods -l app=moonlink-dev -n $NS -o name # obtain pod name
+kubectl exec -n moonlink -it <pod name> -c nginx -- sh -lc 'echo "<h1>OK</h1>" > /usr/share/nginx/html/index.html'
+curl 127.0.0.1:8080
+```
 
 ## Manifest Structure
 
