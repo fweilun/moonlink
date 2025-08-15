@@ -1,5 +1,8 @@
 use core::str;
-use std::num::{ParseFloatError, ParseIntError};
+use std::{
+    fmt::format,
+    num::{ParseFloatError, ParseIntError},
+};
 
 use bigdecimal::ParseBigDecimalError;
 use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime, Utc};
@@ -13,8 +16,8 @@ use super::{bool::ParseBoolError, hex::ByteaHexParseError, numeric::PgNumeric, A
 
 #[derive(Debug, Error)]
 pub enum FromTextError {
-    #[error("invalid text conversion")]
-    InvalidConversion(),
+    #[error("invalid text conversion, Unsupported type: {0}")]
+    InvalidConversion(String),
 
     #[error("invalid bool value")]
     InvalidBool(#[from] ParseBoolError),
@@ -351,13 +354,17 @@ impl TextFormatConverter {
                         }
                         Kind::Array(_) => {
                             // TODO: Multi-dimensional arrays not yet implemented
-                            // TODO: Need to print out the unsupported type (included in error type)
-                            Err(FromTextError::InvalidConversion())
+                            Err(FromTextError::InvalidConversion(format!(
+                                "multi-dimensional arrays"
+                            )))
                         }
-                        _ => Err(FromTextError::InvalidConversion()),
+                        other => Err(FromTextError::InvalidConversion(format!(
+                            "Array<{:?}>",
+                            other
+                        ))),
                     }
                 }
-                _ => Err(FromTextError::InvalidConversion()),
+                other => Err(FromTextError::InvalidConversion(format!("{:?}", other))),
             },
         }
     }
