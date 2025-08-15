@@ -4296,6 +4296,7 @@ dependencies = [
  "futures",
  "iceberg",
  "moonlink",
+ "moonlink_error",
  "num-traits",
  "pg_escape",
  "pin-project-lite",
