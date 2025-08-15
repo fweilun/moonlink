@@ -16,8 +16,6 @@ spec:
       # Moonlink, which serves REST API and TCP rpc requests.
       - name: moonlink-dev
         image: moonlink:dev
-        args:
-        - "--no-rest-api"
         env:
         volumeMounts:
         - name: shared-cache-directory
