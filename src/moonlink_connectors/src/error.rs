@@ -70,11 +70,6 @@ impl From<MoonlinkError> for Error {
             | MoonlinkError::OpenDal(es)
             | MoonlinkError::JoinError(es)
             | MoonlinkError::Json(es) => es.status,
-
-            MoonlinkError::TokioJoinError(_)
-            | MoonlinkError::Utf8(_)
-            | MoonlinkError::TransactionNotFound(_)
-            | MoonlinkError::IcebergMessage(_) => ErrorStatus::Permanent,
         };
         Error::MoonlinkError(ErrorStruct {
             message: format!("Moonlink source error: {source}"),
