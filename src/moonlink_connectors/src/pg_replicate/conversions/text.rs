@@ -344,18 +344,18 @@ impl TextFormatConverter {
             }
             _ => match typ.kind() {
                 Kind::Composite(fields) => TextFormatConverter::parse_composite(str, fields),
-                Kind::Array(typ) => {
+                Kind::Array(inner_type) => {
                     // Check if the array contains composite types.
                     // PostgreSQL supports multi-dimensional arrays (e.g., int[][], text[][]),
                     // but here we currently only handle arrays of composite types.
-                    match typ.kind() {
+                    match inner_type.kind() {
                         Kind::Composite(fields) => {
                             TextFormatConverter::parse_composite_array(str, fields)
                         }
                         // TODO: Multi-dimensional arrays not yet implemented
                         _ => Err(FromTextError::InvalidConversion(format!(
-                            "Array<{:?}>",
-                            typ
+                            "{} with inner type: {}>",
+                            typ, inner_type
                         ))),
                     }
                 }
