@@ -344,23 +344,18 @@ impl TextFormatConverter {
             }
             _ => match typ.kind() {
                 Kind::Composite(fields) => TextFormatConverter::parse_composite(str, fields),
-                Kind::Array(inner_type) => {
+                Kind::Array(typ) => {
                     // Check if the array contains composite types.
                     // PostgreSQL supports multi-dimensional arrays (e.g., int[][], text[][]),
                     // but here we currently only handle arrays of composite types.
-                    match inner_type.kind() {
+                    match typ.kind() {
                         Kind::Composite(fields) => {
                             TextFormatConverter::parse_composite_array(str, fields)
                         }
-                        Kind::Array(_) => {
-                            // TODO: Multi-dimensional arrays not yet implemented
-                            Err(FromTextError::InvalidConversion(format!(
-                                "multi-dimensional arrays"
-                            )))
-                        }
+                        // TODO: Multi-dimensional arrays not yet implemented
                         _ => Err(FromTextError::InvalidConversion(format!(
                             "Array<{:?}>",
-                            inner_type
+                            typ
                         ))),
                     }
                 }
@@ -1063,7 +1058,7 @@ mod tests {
     fn test_composite_parse_errors() {
         use tokio_postgres::types::Field;
 
-        let mut fields = vec![
+        let fields = vec![
             Field::new("id".to_string(), Type::INT4),
             Field::new("name".to_string(), Type::TEXT),
         ];
