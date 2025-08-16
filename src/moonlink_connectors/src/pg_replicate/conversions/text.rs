@@ -354,7 +354,7 @@ impl TextFormatConverter {
                         }
                         // TODO: Multi-dimensional arrays not yet implemented
                         _ => Err(FromTextError::InvalidConversion(format!(
-                            "{} with inner type: {}>",
+                            "{} with inner type: {}",
                             typ, inner_type
                         ))),
                     }
