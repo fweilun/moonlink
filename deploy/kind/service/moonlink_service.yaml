@@ -3,8 +3,6 @@ kind: Service
 metadata:
   name: moonlink-service
 spec:
-  type: LoadBalancer
-  # IP assigned by kubernetes automatically.
   selector:
     app: moonlink-dev
   ports:
