@@ -16,7 +16,7 @@ use super::{bool::ParseBoolError, hex::ByteaHexParseError, numeric::PgNumeric, A
 
 #[derive(Debug, Error)]
 pub enum FromTextError {
-    #[error("invalid text conversion, Unsupported type: {0}")]
+    #[error("invalid text conversion, unsupported type: {0}")]
     InvalidConversion(String),
 
     #[error("invalid bool value")]
@@ -358,13 +358,13 @@ impl TextFormatConverter {
                                 "multi-dimensional arrays"
                             )))
                         }
-                        other => Err(FromTextError::InvalidConversion(format!(
+                        _ => Err(FromTextError::InvalidConversion(format!(
                             "Array<{:?}>",
-                            other
+                            inner_type
                         ))),
                     }
                 }
-                other => Err(FromTextError::InvalidConversion(format!("{:?}", other))),
+                _ => Err(FromTextError::InvalidConversion(format!("{:?}", typ))),
             },
         }
     }
@@ -1063,7 +1063,7 @@ mod tests {
     fn test_composite_parse_errors() {
         use tokio_postgres::types::Field;
 
-        let fields = vec![
+        let mut fields = vec![
             Field::new("id".to_string(), Type::INT4),
             Field::new("name".to_string(), Type::TEXT),
         ];
