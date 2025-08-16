@@ -61,9 +61,24 @@ pub type Result<T> = result::Result<T, Error>;
 impl From<MoonlinkError> for Error {
     #[track_caller]
     fn from(source: MoonlinkError) -> Self {
+        let status = match &source {
+            MoonlinkError::Arrow(es)
+            | MoonlinkError::Io(es)
+            | MoonlinkError::Parquet(es)
+            | MoonlinkError::WatchChannelRecvError(es)
+            | MoonlinkError::IcebergError(es)
+            | MoonlinkError::OpenDal(es)
+            | MoonlinkError::JoinError(es)
+            | MoonlinkError::Json(es) => es.status,
+
+            MoonlinkError::TokioJoinError(_)
+            | MoonlinkError::Utf8(_)
+            | MoonlinkError::TransactionNotFound(_)
+            | MoonlinkError::IcebergMessage(_) => ErrorStatus::Permanent,
+        };
         Error::MoonlinkError(ErrorStruct {
             message: format!("Moonlink source error: {source}"),
-            status: ErrorStatus::Permanent,
+            status,
             source: Some(Arc::new(source.into())),
             location: Some(Location::caller()),
         })
