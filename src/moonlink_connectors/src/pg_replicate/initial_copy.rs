@@ -130,7 +130,7 @@ mod tests {
     /// Create a simple test error for testing error propagation
     fn make_test_error() -> crate::Error {
         crate::Error::PostgresSourceError(ErrorStruct {
-            message: "test error".to_string(),
+            message: "Postgres source error".to_string(),
             status: moonlink_error::ErrorStatus::Permanent,
             source: Some(Arc::new(
                 crate::pg_replicate::postgres_source::PostgresSourceError::MissingPublication
