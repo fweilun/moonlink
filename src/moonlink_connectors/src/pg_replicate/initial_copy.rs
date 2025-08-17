@@ -136,7 +136,7 @@ mod tests {
                 crate::pg_replicate::postgres_source::PostgresSourceError::MissingPublication
                     .into(),
             )),
-            location: Some(Location::caller()),
+            location: Some(Location::caller().to_string()),
         })
     }
 

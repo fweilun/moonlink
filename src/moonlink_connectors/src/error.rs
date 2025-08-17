@@ -72,10 +72,10 @@ impl From<MoonlinkError> for Error {
             | MoonlinkError::Json(es) => es.status,
         };
         Error::MoonlinkError(ErrorStruct {
-            message: format!("Moonlink source error"),
+            message: "Moonlink source error".to_string(),
             status,
             source: Some(Arc::new(source.into())),
-            location: Some(Location::caller()),
+            location: Some(Location::caller().to_string()),
         })
     }
 }
@@ -84,10 +84,10 @@ impl From<PostgresSourceError> for Error {
     #[track_caller]
     fn from(source: PostgresSourceError) -> Self {
         Error::PostgresSourceError(ErrorStruct {
-            message: format!("Postgres source error"),
+            message: "Postgres source error".to_string(),
             status: ErrorStatus::Permanent,
             source: Some(Arc::new(source.into())),
-            location: Some(Location::caller()),
+            location: Some(Location::caller().to_string()),
         })
     }
 }
@@ -96,10 +96,10 @@ impl From<TokioPostgresError> for Error {
     #[track_caller]
     fn from(source: TokioPostgresError) -> Self {
         Error::TokioPostgres(ErrorStruct {
-            message: format!("tokio postgres error"),
+            message: "tokio postgres error".to_string(),
             status: ErrorStatus::Permanent,
             source: Some(Arc::new(source.into())),
-            location: Some(Location::caller()),
+            location: Some(Location::caller().to_string()),
         })
     }
 }
@@ -108,10 +108,10 @@ impl From<CdcStreamError> for Error {
     #[track_caller]
     fn from(source: CdcStreamError) -> Self {
         Error::CdcStream(ErrorStruct {
-            message: format!("Postgres cdc stream error"),
+            message: "Postgres cdc stream error".to_string(),
             status: ErrorStatus::Permanent,
             source: Some(Arc::new(source.into())),
-            location: Some(Location::caller()),
+            location: Some(Location::caller().to_string()),
         })
     }
 }
@@ -120,10 +120,10 @@ impl From<TableCopyStreamError> for Error {
     #[track_caller]
     fn from(source: TableCopyStreamError) -> Self {
         Error::TableCopyStream(ErrorStruct {
-            message: format!("Table copy stream error"),
+            message: "Table copy stream error".to_string(),
             status: ErrorStatus::Permanent,
             source: Some(Arc::new(source.into())),
-            location: Some(Location::caller()),
+            location: Some(Location::caller().to_string()),
         })
     }
 }
@@ -155,25 +155,22 @@ impl From<std::io::Error> for Error {
         };
 
         Error::Io(ErrorStruct {
-            message: format!("IO error"),
+            message: "IO error".to_string(),
             status,
             source: Some(Arc::new(source.into())),
-            location: Some(Location::caller()),
+            location: Some(Location::caller().to_string()),
         })
     }
 }
 
-impl<T> From<tokio::sync::mpsc::error::SendError<T>> for Error
-where
-    T: std::fmt::Debug + Send + Sync + 'static,
-{
+impl<T> From<tokio::sync::mpsc::error::SendError<T>> for Error {
     #[track_caller]
-    fn from(source: tokio::sync::mpsc::error::SendError<T>) -> Self {
+    fn from(err: tokio::sync::mpsc::error::SendError<T>) -> Self {
         Error::Io(ErrorStruct {
-            message: format!("Channel send error"),
+            message: format!("Channel send error: {err:?}"),
             status: ErrorStatus::Permanent,
-            source: Some(Arc::new(source.into())),
-            location: Some(Location::caller()),
+            source: None,
+            location: Some(Location::caller().to_string()),
         })
     }
 }
