@@ -4,7 +4,7 @@ use crate::pg_replicate::postgres_source::{
 use crate::rest_ingest::rest_source::RestSourceError;
 use crate::rest_ingest::SrcTableId;
 use moonlink::Error as MoonlinkError;
-use moonlink_error::{ErrorStatus, ErrorStruct};
+use moonlink_error::{io_error_utils, ErrorStatus, ErrorStruct};
 use std::panic::Location;
 use std::result;
 use std::sync::Arc;
@@ -139,24 +139,9 @@ impl From<RestSourceError> for Error {
 impl From<std::io::Error> for Error {
     #[track_caller]
     fn from(source: std::io::Error) -> Self {
-        let status = match source.kind() {
-            std::io::ErrorKind::TimedOut
-            | std::io::ErrorKind::Interrupted
-            | std::io::ErrorKind::WouldBlock
-            | std::io::ErrorKind::ConnectionRefused
-            | std::io::ErrorKind::ConnectionAborted
-            | std::io::ErrorKind::ConnectionReset
-            | std::io::ErrorKind::BrokenPipe
-            | std::io::ErrorKind::NetworkDown
-            | std::io::ErrorKind::ResourceBusy
-            | std::io::ErrorKind::QuotaExceeded => ErrorStatus::Temporary,
-
-            _ => ErrorStatus::Permanent,
-        };
-
         Error::Io(ErrorStruct {
             message: "IO error".to_string(),
-            status,
+            status: io_error_utils::get_io_error_status(&source),
             source: Some(Arc::new(source.into())),
             location: Some(Location::caller().to_string()),
         })
