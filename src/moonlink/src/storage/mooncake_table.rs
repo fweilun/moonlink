@@ -66,7 +66,6 @@ use delete_vector::BatchDeletionVector;
 pub(crate) use disk_slice::DiskSliceWriter;
 use mem_slice::MemSlice;
 use prometheus_client::metrics::histogram::{linear_buckets, Histogram};
-use prometheus_client::registry::Registry;
 pub(crate) use snapshot::{PuffinDeletionBlobAtRead, SnapshotTableState};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;
@@ -199,23 +198,13 @@ impl Snapshot {
 
 struct SnapshotStats {
     creation_latency: Histogram,
-    registry: Registry,
 }
 
 impl SnapshotStats {
     fn new() -> Self {
         Self {
             creation_latency: Histogram::new(linear_buckets(0.0, 3.0, 100)),
-            registry: Registry::default(),
         }
-    }
-
-    pub fn register(&mut self) {
-        self.registry.register(
-            "snapshot_create_latency",
-            "Latency of snapshot creation",
-            self.creation_latency.clone(),
-        );
     }
 
     fn update_creation_latency(&mut self, time: f64) {
@@ -548,8 +537,7 @@ impl MooncakeTable {
 
         let non_streaming_batch_id_counter = Arc::new(BatchIdCounter::new(false));
         let streaming_batch_id_counter = Arc::new(BatchIdCounter::new(true));
-        let mut snapshot_stats = SnapshotStats::new();
-        snapshot_stats.register();
+        let snapshot_stats = SnapshotStats::new();
         let event_id_assigner = EventIdAssigner::new();
 
         Ok(Self {
