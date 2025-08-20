@@ -218,7 +218,7 @@ impl SnapshotStats {
         );
     }
 
-    fn update(&mut self, time: f64) {
+    fn update_creation_latency(&mut self, time: f64) {
         self.creation_latency.observe(time);
     }
 }
