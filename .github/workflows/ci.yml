@@ -28,7 +28,7 @@ jobs:
     name: Format & Clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: dtolnay/rust-toolchain@stable
         id: toolchain
@@ -62,7 +62,7 @@ jobs:
         include:
           - type: feature
             name: GCS feature test
-            timeout-minutes: 5
+            timeout-minutes: 10
             cmd: |
               cargo test --lib --features=storage-gcs
           - type: chaos
@@ -71,7 +71,7 @@ jobs:
             cmd: |
               RUST_BACKTRACE=1 cargo test test_gcs_chaos --features=chaos-test,storage-gcs -p moonlink -- --nocapture
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # ─────────────────────── Start Fake GCS Server ──────────────────────────
       - name: Start Fake GCS Server
@@ -107,6 +107,16 @@ jobs:
         run: |
           ${{ matrix.cmd }}
 
+      #  ────────────────────── Upload chaos dump ────────────────────────────
+      - name: Upload chaos dumps
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chaos-dumps-${{ github.run_id }}-${{ github.job }}-${{ matrix.target || 'no-matrix' }}
+          path: /tmp/chaos_test_*
+          retention-days: 3
+          if-no-files-found: warn
+
   # ──────────────────────── 3 · S3 test (feature, chaos) ───────────────────
   s3_test:
     name: S3 tests (feature, chaos)
@@ -117,7 +127,7 @@ jobs:
         include:
           - type: feature
             name: S3 feature test
-            timeout-minutes: 5
+            timeout-minutes: 10
             cmd: |
               cargo test --lib --features=storage-s3
           - type: chaos
@@ -127,7 +137,16 @@ jobs:
               cargo test storage::filesystem::accessor -p moonlink --features=chaos-test
               RUST_BACKTRACE=1 cargo test test_s3_chaos --features=chaos-test,storage-s3 -p moonlink -- --nocapture
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ steps.toolchain.outputs.cachekey }}
+
+      - uses: rui314/setup-mold@v1
+        with:
+          mold-version: 2.40.3
+          make-default: true
 
       # ─────────────────────── Start Fake S3 Server ──────────────────────────
       - name: Start Fake S3 Server
@@ -163,13 +182,23 @@ jobs:
         run: |
           ${{ matrix.cmd }}
 
+      #  ────────────────────── Upload chaos dump ────────────────────────────
+      - name: Upload chaos dumps
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chaos-dumps-${{ github.run_id }}-${{ github.job }}-${{ matrix.target || 'no-matrix' }}
+          path: /tmp/chaos_test_*
+          retention-days: 3
+          if-no-files-found: warn
+
   # ───────────────────────── 4 · TEST & COVERAGE ────────────────────────────
   coverage:
     name: Unit Tests + Coverage (llvm-cov + nextest)
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # ────────────────────── Toolchain + Test Tools ─────────────────────────
       - uses: dtolnay/rust-toolchain@stable
@@ -181,17 +210,25 @@ jobs:
         with:
           shared-key: ${{ steps.toolchain.outputs.cachekey }}
 
+      - uses: rui314/setup-mold@v1
+        with:
+          mold-version: 2.40.3
+          make-default: true
+
       - uses: taiki-e/install-action@v2
         with: { tool: cargo-llvm-cov }
       - uses: taiki-e/install-action@v2
         with: { tool: nextest }
 
       - name: Run tests via llvm-cov/nextest
-        timeout-minutes: 5
+        timeout-minutes: 10
+        # Remove moonlink_datafusion from unit test pipeline, since it takes long to build (2x longer than all other crates), and it doesn't contain any unit tests.
         run: |
           cargo llvm-cov \
             --locked \
             --lib \
+            --workspace \
+            --exclude moonlink_datafusion \
             --lcov --output-path lcov.info \
             nextest \
               --profile ci \
@@ -223,12 +260,31 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ steps.toolchain.outputs.cachekey }}
+
+      - uses: rui314/setup-mold@v1
+        with:
+          mold-version: 2.40.3
+          make-default: true
 
       - name: Start chaos test
         timeout-minutes: 10
         run: |
           RUST_BACKTRACE=1 cargo test table_handler::chaos_test::test_chaos_on_local_fs --features=chaos-test -p moonlink -- --nocapture
+
+      #  ────────────────────── Upload chaos dump ────────────────────────────
+      - name: Upload chaos dumps
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chaos-dumps-${{ github.run_id }}-${{ github.job }}-${{ matrix.target || 'no-matrix' }}
+          path: /tmp/chaos_test_*
+          retention-days: 3
+          if-no-files-found: warn
 
   # ───────────── 6 · Chaos test with local fs optimization ─────────────
   chaos_test_with_local_fs_optimization:
@@ -236,12 +292,22 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Start chaos test
         timeout-minutes: 10
         run: |
           RUST_BACKTRACE=1 cargo test table_handler::chaos_test::test_local_system_optimization_chaos --features=chaos-test -p moonlink -- --nocapture
+
+      #  ────────────────────── Upload chaos dump ────────────────────────────
+      - name: Upload chaos dumps
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chaos-dumps-${{ github.run_id }}-${{ github.job }}-${{ matrix.target || 'no-matrix' }}
+          path: /tmp/chaos_test_*
+          retention-days: 3
+          if-no-files-found: warn
 
   # ───────────── 7 · Chaos test with chaos injection ─────────────
   chaos_test_with_chaos_injection:
@@ -249,12 +315,31 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ steps.toolchain.outputs.cachekey }}
+
+      - uses: rui314/setup-mold@v1
+        with:
+          mold-version: 2.40.3
+          make-default: true
 
       - name: Start chaos test
         timeout-minutes: 10
         run: |
           RUST_BACKTRACE=1 cargo test table_handler::chaos_test::test_chaos_injection --features=chaos-test -p moonlink -- --nocapture
+
+      #  ────────────────────── Upload chaos dump ────────────────────────────
+      - name: Upload chaos dumps
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chaos-dumps-${{ github.run_id }}-${{ github.job }}-${{ matrix.target || 'no-matrix' }}
+          path: /tmp/chaos_test_*
+          retention-days: 3
+          if-no-files-found: warn
 
   # ───────────── 8 · Chaos test for disk slice write ─────────────
   disk_slice_write_with_chaos:
@@ -262,9 +347,178 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ steps.toolchain.outputs.cachekey }}
+
+      - uses: rui314/setup-mold@v1
+        with:
+          mold-version: 2.40.3
+          make-default: true
 
       - name: Start chaos test
         timeout-minutes: 10
         run: |
           RUST_BACKTRACE=1 cargo test table_handler::chaos_test::test_disk_slice_chaos --features=chaos-test -p moonlink -- --nocapture
+
+      #  ────────────────────── Upload chaos dump ────────────────────────────
+      - name: Upload chaos dumps
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chaos-dumps-${{ github.run_id }}-${{ github.job }}-${{ matrix.target || 'no-matrix' }}
+          path: /tmp/chaos_test_*
+          retention-days: 3
+          if-no-files-found: warn
+
+  # ───────────── 9 · Chaos test for append only operation ─────────────
+  append_only_chaos:
+    name: Chaos test for append only operation
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ steps.toolchain.outputs.cachekey }}
+
+      - uses: rui314/setup-mold@v1
+        with:
+          mold-version: 2.40.3
+          make-default: true
+
+      - name: Start chaos test
+        timeout-minutes: 10
+        run: |
+          RUST_BACKTRACE=1 cargo test table_handler::chaos_test::test_append_only_chaos --features=chaos-test -p moonlink -- --nocapture
+
+      #  ────────────────────── Upload chaos dump ────────────────────────────
+      - name: Upload chaos dumps
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chaos-dumps-${{ github.run_id }}-${{ github.job }}-${{ matrix.target || 'no-matrix' }}
+          path: /tmp/chaos_test_*
+          retention-days: 3
+          if-no-files-found: warn
+
+  # ───────────── 10 · PostgreSQL Integration Tests ─────────────
+  postgres_tests:
+    name: PostgreSQL Integration Tests
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:latest
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        id: toolchain
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ steps.toolchain.outputs.cachekey }}
+
+      - uses: rui314/setup-mold@v1
+        with:
+          mold-version: 2.40.3
+          make-default: true
+
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..10}; do
+            if pg_isready -h localhost -p 5432 -U postgres; then
+              echo "PostgreSQL is ready!"
+              break
+            fi
+            echo "Waiting for PostgreSQL..."
+            sleep 2
+          done
+
+      - name: Configure PostgreSQL for logical replication
+        run: |
+          PGPASSWORD=postgres psql -h localhost -p 5432 -U postgres -d postgres -c "ALTER SYSTEM SET wal_level = 'logical';"
+          PGPASSWORD=postgres psql -h localhost -p 5432 -U postgres -d postgres -c "SELECT pg_reload_conf();"
+
+      - name: Run PostgreSQL integration tests
+        timeout-minutes: 10
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+        run: |
+          cargo test --package moonlink_connectors --lib --features connector-pg
+          cargo test --package moonlink_metadata_store --tests --features metadata-postgres
+
+  # ───────────── 11 · Moonlink Service Integration Tests ─────────────
+  moonlink_service_tests:
+    name: Moonlink Service Integration Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        id: toolchain
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ steps.toolchain.outputs.cachekey }}
+
+      - uses: rui314/setup-mold@v1
+        with:
+          mold-version: 2.40.3
+          make-default: true
+
+      # ────────────────────── Create backend directory ─────────────────────────
+      - name: Create backend directory
+        run: |
+          mkdir -p ${{ github.workspace }}/.shared-nginx
+          chmod 777 ${{ github.workspace }}/.shared-nginx
+
+      # ─────────────────────── Start nginx manually ──────────────────────────
+      - name: Start nginx
+        run: |
+          docker run -d \
+            --name nginx \
+            -p 80:80 \
+            -v ${{ github.workspace }}/.shared-nginx:/usr/share/nginx/html:ro \
+            nginx:latest
+
+      # ─────────────── Add hostnames to /etc/hosts ──────────────────────────
+      - name: Add nginx.local to /etc/hosts
+        run: |
+          echo "127.0.0.1 nginx.local" | sudo tee -a /etc/hosts
+
+      # ───────────────────── Wait for nginx to be ready ───────────────────
+      - name: Wait for nginx
+        run: |
+          for i in {1..10}; do
+            if curl -sf http://localhost:80; then
+              echo "Nginx is ready!"
+              break
+            fi
+            echo "Waiting for nginx..."
+            sleep 2
+          done
+
+      - name: Run moonlink_service integration tests
+        timeout-minutes: 10
+        env:
+          MOONLINK_BACKEND_DIR: ${{ github.workspace }}/.shared-nginx
+        run: |
+          RUST_BACKTRACE=1 cargo test --package moonlink_service --lib --features standalone-test -- --nocapture

@@ -1,5 +1,6 @@
 use super::data_batches::BatchEntry;
 use crate::error::{Error, Result};
+use crate::storage::cache::object_storage::base_cache::CacheTrait;
 use crate::storage::filesystem::accessor::chaos_generator::ChaosGenerator;
 use crate::storage::index::persisted_bucket_hash_map::GlobalIndexBuilder;
 use crate::storage::index::{cache_utils as index_cache_utils, FileIndex, MemIndex};
@@ -9,7 +10,7 @@ use crate::storage::storage_utils::{
     create_data_file, get_random_file_name_in_dir, get_unique_file_id_for_flush,
     MooncakeDataFileRef, ProcessedDeletionRecord, RecordLocation, TableId,
 };
-use crate::ObjectStorageCache;
+
 use arrow_array::RecordBatch;
 use arrow_schema::Schema;
 use parquet::arrow::AsyncArrowWriter;
@@ -47,7 +48,7 @@ pub struct DiskSliceWriter {
     // a mapping of old record locations to new record locations
     // this is used to remap deletions on the disk slice
     batch_id_to_idx: HashMap<u64, usize>,
-    row_offset_mapping: Vec<Vec<Option<(usize, usize)>>>,
+    pub row_offset_mapping: Vec<Vec<Option<(usize, usize)>>>,
 
     new_index: Option<FileIndex>,
 
@@ -140,7 +141,7 @@ impl DiskSliceWriter {
     }
 
     /// Get the list of files in the DiskSlice
-    pub(super) fn output_files(&self) -> &[(MooncakeDataFileRef, DiskFileAttrs)] {
+    pub(crate) fn output_files(&self) -> &[(MooncakeDataFileRef, DiskFileAttrs)] {
         self.files.as_slice()
     }
 
@@ -153,7 +154,7 @@ impl DiskSliceWriter {
     /// Return evicted files to delete.
     pub(crate) async fn import_file_indices_to_cache(
         &mut self,
-        object_storage_cache: ObjectStorageCache,
+        object_storage_cache: Arc<dyn CacheTrait>,
         table_id: TableId,
     ) -> Vec<String> {
         // Aggregate evicted files to delete.
@@ -220,7 +221,7 @@ impl DiskSliceWriter {
             writer.as_mut().unwrap().write(batch).await?;
             let estimated_total_size = {
                 let cur_writer = writer.as_ref().unwrap();
-                cur_writer.in_progress_size() + cur_writer.bytes_written()
+                cur_writer.memory_size()
             };
             if estimated_total_size > self.disk_slice_writer_config.parquet_file_size {
                 // Finalize the writer
@@ -264,6 +265,13 @@ impl DiskSliceWriter {
         let list = self
             .old_index
             .remap_into_vec(&self.batch_id_to_idx, &self.row_offset_mapping);
+        assert_eq!(
+            list.len(),
+            self.files
+                .iter()
+                .map(|(_, attrs)| attrs.row_num)
+                .sum::<usize>()
+        );
         let file_id =
             get_unique_file_id_for_flush(self.table_auto_incr_id as u64, self.files.len() as u64);
         let mut index_builder = GlobalIndexBuilder::new();

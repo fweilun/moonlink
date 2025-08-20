@@ -116,7 +116,7 @@ impl Default for IcebergPersistenceConfig {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct MooncakeTableConfig {
     /// Number of batch records which decides when to flush records from MemSlice to disk.
     pub mem_slice_size: usize,
@@ -134,6 +134,8 @@ pub struct MooncakeTableConfig {
     pub file_index_config: FileIndexMergeConfig,
     /// Filesystem directory to store temporary files, used for union read.
     pub temp_files_directory: String,
+    /// Whether this is an append-only table (no indexes, no deletes).
+    pub append_only: bool,
 }
 
 impl Default for MooncakeTableConfig {
@@ -170,6 +172,7 @@ impl MooncakeTableConfig {
             data_compaction_config: DataCompactionConfig::default(),
             file_index_config: FileIndexMergeConfig::default(),
             temp_files_directory,
+            append_only: false,
         }
     }
 

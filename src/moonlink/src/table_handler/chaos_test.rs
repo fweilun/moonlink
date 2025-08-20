@@ -15,7 +15,9 @@ use crate::storage::filesystem::gcs::test_guard::TestGuard as GcsTestGuard;
 use crate::storage::filesystem::s3::s3_test_utils::*;
 #[cfg(feature = "storage-s3")]
 use crate::storage::filesystem::s3::test_guard::TestGuard as S3TestGuard;
+use crate::storage::mooncake_table::replay::replay_events::MooncakeTableEvent;
 use crate::storage::mooncake_table::{table_creation_test_utils::*, TableMetadata};
+use crate::table_handler::chaos_table_metadata::ReplayTableMetadata;
 use crate::table_handler::test_utils::*;
 use crate::table_handler::{TableEvent, TableHandler};
 use crate::table_handler_timer::create_table_handler_timers;
@@ -29,10 +31,11 @@ use pico_args::Arguments;
 use rand::prelude::*;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tempfile::{tempdir, TempDir};
+use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use tokio::sync::watch;
 
@@ -143,6 +146,7 @@ enum EventKind {
     BeginNonStreamingTxn,
     Append,
     Delete,
+    Update,
     StreamAbort,
     StreamFlush,
     EndWithFlush,
@@ -170,6 +174,8 @@ struct ChaosState {
     random_seed: u64,
     /// Used to generate random events, with current timestamp as random seed.
     rng: StdRng,
+    /// Whether to enable delete operations.
+    deletion_enabled: bool,
     /// Non table update operation invocation status.
     non_table_update_cmd_call: NonTableUpdateCmdCall,
     /// Used to generate rows to insert.
@@ -178,11 +184,14 @@ struct ChaosState {
     committed_inserted_rows: VecDeque<(i32 /*id*/, MoonlinkRow)>,
     /// Inserted rows in the current uncommitted transaction.
     uncommitted_inserted_rows: VecDeque<(i32 /*id*/, MoonlinkRow)>,
+    /// Updated rows in the current uncommitted transaction.
+    /// The row being deleted and appended is of the same content.
+    uncommitted_updated_rows: HashMap<i32 /*id*/, MoonlinkRow>,
     /// Deleted committed row ids in the current uncommitted transaction.
-    deleted_committed_row_ids: HashSet<i32>,
+    deleted_committed_row_ids: HashSet<i32 /*id*/>,
     /// Deleted uncommitted row ids in the current uncommitted transaction.
     /// Notice: only stream transactions are able to delete uncommitted rows.
-    deleted_uncommitted_row_ids: HashSet<i32>,
+    deleted_uncommitted_row_ids: HashSet<i32 /*id*/>,
     /// Used to indicate whether there's an ongoing transaction.
     txn_state: TxnState,
     /// LSN to use for the next operation, including update operations and commits.
@@ -195,17 +204,15 @@ struct ChaosState {
     last_commit_lsn: Option<u64>,
     /// Whether the last finished transaction committed successfully, or not.
     last_txn_is_committed: bool,
-    /// Parsed chaos test arguments.
-    _args: ChaosTestArgs,
 }
 
 impl ChaosState {
-    fn new(read_state_manager: ReadStateManager, args: ChaosTestArgs) -> Self {
-        let random_seed = args.seed;
+    fn new(read_state_manager: ReadStateManager, random_seed: u64, deletion_enabled: bool) -> Self {
         let rng = StdRng::seed_from_u64(random_seed);
         Self {
             random_seed,
             rng,
+            deletion_enabled,
             non_table_update_cmd_call: NonTableUpdateCmdCall::default(),
             txn_state: TxnState::Empty,
             next_id: 0,
@@ -213,12 +220,12 @@ impl ChaosState {
             uncommitted_inserted_rows: VecDeque::new(),
             deleted_committed_row_ids: HashSet::new(),
             deleted_uncommitted_row_ids: HashSet::new(),
+            uncommitted_updated_rows: HashMap::new(),
             read_state_manager,
             cur_lsn: 0,
             cur_xact_id: 0,
             last_commit_lsn: None,
             last_txn_is_committed: false,
-            _args: args,
         }
     }
 
@@ -229,10 +236,19 @@ impl ChaosState {
         cur_lsn
     }
 
+    /// Clear all buffered rows for the current transaction.
+    fn clear_cur_transaction_buffered_rows(&mut self) {
+        self.uncommitted_inserted_rows.clear();
+        self.uncommitted_updated_rows.clear();
+        self.deleted_committed_row_ids.clear();
+        self.deleted_uncommitted_row_ids.clear();
+    }
+
     /// Assert on preconditions to start a new transaction, whether it's streaming one or non-streaming one.
     fn assert_txn_begin_precondition(&self) {
         assert_eq!(self.txn_state, TxnState::Empty);
         assert!(self.uncommitted_inserted_rows.is_empty());
+        assert!(self.uncommitted_updated_rows.is_empty());
         assert!(self.deleted_committed_row_ids.is_empty());
         assert!(self.deleted_uncommitted_row_ids.is_empty());
     }
@@ -253,10 +269,8 @@ impl ChaosState {
         assert_eq!(self.txn_state, TxnState::InStreaming);
         self.txn_state = TxnState::Empty;
         self.cur_xact_id += 1;
-        self.uncommitted_inserted_rows.clear();
-        self.deleted_committed_row_ids.clear();
-        self.deleted_uncommitted_row_ids.clear();
         self.last_txn_is_committed = false;
+        self.clear_cur_transaction_buffered_rows();
     }
 
     fn commit_transaction(&mut self, lsn: u64) {
@@ -278,8 +292,8 @@ impl ChaosState {
             !self.deleted_committed_row_ids.contains(id)
                 && !self.deleted_uncommitted_row_ids.contains(id)
         });
-        self.deleted_committed_row_ids.clear();
-        self.deleted_uncommitted_row_ids.clear();
+
+        self.clear_cur_transaction_buffered_rows();
     }
 
     /// Get transaction id to set for both streaming and non-streaming transactions.
@@ -307,28 +321,95 @@ impl ChaosState {
             .collect::<Vec<_>>()
     }
 
+    /// Util function to decide whether there's any updated rows, which are not deleted in the current transaction.
+    fn has_updated_undeleted_row(&self) -> bool {
+        for (id, _) in self.uncommitted_updated_rows.iter() {
+            if !self.deleted_uncommitted_row_ids.contains(id)
+                && !self.deleted_committed_row_ids.contains(id)
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Util function to decide whether the given id indicates a row that has been committed or not.
+    fn is_committed_row(&self, id: i32) -> bool {
+        // Uncommitted rows have much less records, so search on uncommitted records instead of committed ones.
+        !self
+            .uncommitted_inserted_rows
+            .iter()
+            .any(|(cur_id, _)| *cur_id == id)
+    }
+
     /// Return whether we could delete a row in the next event.
+    ///
+    /// The logic corresponds to [`get_random_row_to_delete`].
     fn can_delete(&self) -> bool {
-        // There're undeleted committed records.
-        if !self.committed_inserted_rows.is_empty()
-            && self.deleted_committed_row_ids.len() != self.committed_inserted_rows.len()
-        {
-            ma::assert_lt!(
-                self.deleted_committed_row_ids.len(),
-                self.committed_inserted_rows.len()
-            );
+        if !self.deletion_enabled {
+            return false;
+        }
+
+        let uncommitted_inserted_rows = self.uncommitted_inserted_rows.len();
+        let committed_inserted_rows = self.committed_inserted_rows.len();
+        let uncommitted_updated_rows = self.uncommitted_updated_rows.len();
+        let deleted_committed_rows = self.deleted_committed_row_ids.len();
+        let deleted_uncommitted_rows = self.deleted_uncommitted_row_ids.len();
+
+        // There're undeleted committed records, which are not deleted or updated in the current transaction.
+        if committed_inserted_rows > deleted_committed_rows + uncommitted_updated_rows {
             return true;
         }
 
-        // Streaming transactions are allowed to delete rows inserted in the current transaction.
-        if self.txn_state == TxnState::InStreaming
-            && self.deleted_uncommitted_row_ids.len() != self.uncommitted_inserted_rows.len()
+        // Streaming transactions are allowed to update and deleted rows updated or appended in the current transaction.
+        if self.txn_state == TxnState::InStreaming {
+            // Streaming transactions are allowed to delete rows inserted in the current transaction.
+            if uncommitted_inserted_rows != deleted_uncommitted_rows {
+                ma::assert_lt!(
+                    self.deleted_uncommitted_row_ids.len(),
+                    self.uncommitted_inserted_rows.len()
+                );
+                return true;
+            }
+
+            // Streaming transactions are allowed to delete updated rows in the current transaction.
+            if self.has_updated_undeleted_row() {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    /// Return whether we could update a row in the next event.
+    ///
+    /// The logic corresponds to [`get_random_row_to_update`].
+    fn can_update(&self) -> bool {
+        if !self.deletion_enabled {
+            return false;
+        }
+
+        let committed_inserted_rows = self.committed_inserted_rows.len();
+        let uncommitted_updated_rows = self.uncommitted_updated_rows.len();
+        let deleted_committed_rows = self.deleted_committed_row_ids.len();
+        let deleted_uncommitted_rows = self.deleted_uncommitted_row_ids.len();
+
+        if committed_inserted_rows
+            > (uncommitted_updated_rows + deleted_committed_rows + deleted_uncommitted_rows)
         {
-            ma::assert_lt!(
-                self.deleted_uncommitted_row_ids.len(),
-                self.uncommitted_inserted_rows.len()
-            );
             return true;
+        }
+
+        if self.txn_state == TxnState::InStreaming {
+            // Streaming transaction allows to update an already updated row.
+            if self.has_updated_undeleted_row() {
+                return true;
+            }
+
+            // Streaming transaction allows to update an uncommitted row.
+            if self.uncommitted_inserted_rows.len() > self.deleted_uncommitted_row_ids.len() {
+                return true;
+            }
         }
 
         false
@@ -339,17 +420,37 @@ impl ChaosState {
         let mut candidates: Vec<(i32, MoonlinkRow, bool /*committed*/)> = self
             .committed_inserted_rows
             .iter()
-            .filter(|(id, _)| !self.deleted_committed_row_ids.contains(id))
+            .filter(|(id, _)| {
+                !self.deleted_committed_row_ids.contains(id)
+                    && !self.uncommitted_updated_rows.contains_key(id)
+            })
             .map(|(id, row)| (*id, row.clone(), /*committed=*/ true))
             .collect();
 
         // If within a streaming transaction, could also delete from uncommitted inserted rows.
         if self.txn_state == TxnState::InStreaming {
+            // Allow to delete new rows appended in the current txn.
             candidates.extend(
                 self.uncommitted_inserted_rows
                     .iter()
                     .filter(|(id, _)| !self.deleted_uncommitted_row_ids.contains(id))
                     .map(|(id, row)| (*id, row.clone(), /*committed=*/ false)),
+            );
+            // Allow to delete rows updated in the current txn.
+            candidates.extend(
+                self.uncommitted_updated_rows
+                    .iter()
+                    .filter(|(id, _)| {
+                        !self.deleted_uncommitted_row_ids.contains(id)
+                            && !self.deleted_committed_row_ids.contains(id)
+                    })
+                    .map(|(id, row)| {
+                        (
+                            *id,
+                            row.clone(),
+                            /*committed=*/ self.is_committed_row(*id),
+                        )
+                    }),
             );
         }
         assert!(!candidates.is_empty());
@@ -364,6 +465,60 @@ impl ChaosState {
         } else {
             assert!(self.deleted_uncommitted_row_ids.insert(id));
         }
+
+        row
+    }
+
+    /// Get a random row to update.
+    fn get_random_row_to_update(&mut self) -> MoonlinkRow {
+        let mut candidates: Vec<(i32, MoonlinkRow)> = self
+            .committed_inserted_rows
+            .iter()
+            .filter(|(id, _)| {
+                !self.uncommitted_updated_rows.contains_key(id)
+                    && !self.deleted_committed_row_ids.contains(id)
+                    && !self.deleted_uncommitted_row_ids.contains(id)
+            })
+            .map(|(id, row)| (*id, row.clone()))
+            .collect();
+
+        if self.txn_state == TxnState::InStreaming {
+            // Streaming transaction could update from uncommitted updated rows, as long as it's not deleted in the current transaction.
+            candidates.extend(
+                self.uncommitted_updated_rows
+                    .iter()
+                    .filter(|(id, _)| {
+                        !self.deleted_uncommitted_row_ids.contains(id)
+                            && !self.deleted_committed_row_ids.contains(id)
+                    })
+                    .map(|(id, row)| (*id, row.clone())),
+            );
+
+            // Streaming transactuon allows to update uncommitted undeleted rows.
+            candidates.extend(
+                self.uncommitted_inserted_rows
+                    .iter()
+                    .filter(|(id, _)| {
+                        !self.deleted_uncommitted_row_ids.contains(id)
+                        // Uncommitted updated rows have been included above.
+                            && !self.uncommitted_updated_rows.contains_key(id)
+                    })
+                    .map(|(id, row)| (*id, row.clone())),
+            );
+        }
+        assert!(!candidates.is_empty());
+
+        // Randomly pick one row from the candidates.
+        let random_idx = self.rng.random_range(0..candidates.len());
+        let (id, row) = candidates[random_idx].clone();
+
+        // Update update rows set.
+        let old_entry = self.uncommitted_updated_rows.insert(id, row.clone());
+        // For non-streaming transaction doesn't allow repeatedly update one row.
+        if self.txn_state == TxnState::InNonStreaming {
+            assert!(old_entry.is_none());
+        }
+        // It's ok for streaming transaction to repeated update the same row.
 
         row
     }
@@ -422,6 +577,9 @@ impl ChaosState {
             if self.can_delete() {
                 choices.push(EventKind::Delete);
             }
+            if self.can_update() {
+                choices.push(EventKind::Update);
+            }
             if self.txn_state == TxnState::InStreaming {
                 choices.push(EventKind::StreamFlush);
                 choices.push(EventKind::StreamAbort);
@@ -429,6 +587,7 @@ impl ChaosState {
             choices.push(EventKind::EndWithFlush);
             choices.push(EventKind::EndNoFlush);
         }
+        assert!(!choices.is_empty());
 
         match *choices.choose(&mut self.rng).unwrap() {
             EventKind::ReadSnapshot => {
@@ -478,6 +637,24 @@ impl ChaosState {
                 lsn: self.get_and_update_cur_lsn(),
                 is_recovery: false,
             }]),
+            EventKind::Update => {
+                let row = self.get_random_row_to_update();
+                ChaosEvent::create_table_events(vec![
+                    TableEvent::Delete {
+                        row: row.clone(),
+                        xact_id: self.get_cur_xact_id(),
+                        lsn: self.get_and_update_cur_lsn(),
+                        is_recovery: false,
+                    },
+                    TableEvent::Append {
+                        row: row.clone(),
+                        xact_id: self.get_cur_xact_id(),
+                        lsn: self.get_and_update_cur_lsn(),
+                        is_copied: false,
+                        is_recovery: false,
+                    },
+                ])
+            }
             EventKind::StreamFlush => {
                 ChaosEvent::create_table_events(vec![TableEvent::StreamFlush {
                     xact_id: self.get_cur_xact_id().unwrap(),
@@ -490,6 +667,7 @@ impl ChaosState {
                 ChaosEvent::create_table_events(vec![TableEvent::StreamAbort {
                     xact_id,
                     is_recovery: false,
+                    closes_incomplete_wal_transaction: false,
                 }])
             }
             EventKind::EndWithFlush => {
@@ -534,6 +712,8 @@ struct TestEnvConfig {
     disk_slice_write_chaos_enabled: bool,
     /// Whether to enable local filesystem optimization for object storage cache.
     local_filesystem_optimization_enabled: bool,
+    /// Whether to disable deletion.
+    deletion_enabled: bool,
     /// Table background maintenance option.
     maintenance_option: TableMaintenanceOption,
     /// Event count.
@@ -555,7 +735,7 @@ struct TestEnvironment {
     table_event_manager: TableEventManager,
     table_handler: TableHandler,
     event_sender: mpsc::Sender<TableEvent>,
-    event_replay_rx: mpsc::UnboundedReceiver<TableEvent>,
+    handler_event_replay_rx: mpsc::UnboundedReceiver<TableEvent>,
     wal_flush_lsn_rx: watch::Receiver<u64>,
     last_commit_lsn_tx: watch::Sender<u64>,
     replication_lsn_tx: watch::Sender<u64>,
@@ -571,21 +751,25 @@ impl TestEnvironment {
             config.disk_slice_write_chaos_enabled,
             chaos_test_arg.seed,
         );
+        let identity = get_random_identity(chaos_test_arg.seed);
         let mooncake_table_metadata = match &config.maintenance_option {
             TableMaintenanceOption::NoTableMaintenance => create_test_table_metadata_disable_flush(
                 table_temp_dir.path().to_str().unwrap().to_string(),
                 disk_slice_write_config,
+                identity.clone(),
             ),
             TableMaintenanceOption::IndexMerge => {
                 create_test_table_metadata_with_index_merge_disable_flush(
                     table_temp_dir.path().to_str().unwrap().to_string(),
                     disk_slice_write_config,
+                    identity.clone(),
                 )
             }
             TableMaintenanceOption::DataCompaction => {
                 create_test_table_metadata_with_data_compaction_disable_flush(
                     table_temp_dir.path().to_str().unwrap().to_string(),
                     disk_slice_write_config,
+                    identity.clone(),
                 )
             }
         };
@@ -595,7 +779,7 @@ impl TestEnvironment {
         let object_storage_cache = if config.local_filesystem_optimization_enabled {
             let config = ObjectStorageCacheConfig::new(
                 /*max_bytes=*/ 1 << 30, // 1GiB
-                table_temp_dir.path().to_str().unwrap().to_string(),
+                cache_temp_dir.path().to_str().unwrap().to_string(),
                 /*optimize_local_filesystem=*/ true,
             );
             ObjectStorageCache::new(config)
@@ -615,7 +799,7 @@ impl TestEnvironment {
         let table = create_mooncake_table(
             mooncake_table_metadata.clone(),
             iceberg_table_config.clone(),
-            object_storage_cache.clone(),
+            Arc::new(object_storage_cache.clone()),
         )
         .await;
         let (replication_lsn_tx, replication_lsn_rx) = watch::channel(0u64);
@@ -629,19 +813,38 @@ impl TestEnvironment {
             read_state_filepath_remap,
         );
         let (table_event_sync_sender, table_event_sync_receiver) = create_table_event_syncer();
-        let (event_replay_tx, event_replay_rx) = mpsc::unbounded_channel();
+        let (handler_event_replay_tx, handler_event_replay_rx) = mpsc::unbounded_channel();
+        let (table_event_replay_tx, table_event_replay_rx) = mpsc::unbounded_channel();
         let table_handler = TableHandler::new(
             table,
             table_event_sync_sender,
             create_table_handler_timers(),
             replication_lsn_rx.clone(),
-            Some(event_replay_tx),
+            Some(handler_event_replay_tx),
+            Some(table_event_replay_tx),
         )
         .await;
         let wal_flush_lsn_rx = table_event_sync_receiver.wal_flush_lsn_rx.clone();
         let table_event_manager =
             TableEventManager::new(table_handler.get_event_sender(), table_event_sync_receiver);
         let event_sender = table_handler.get_event_sender();
+
+        // Start a background task to dump serialized mooncake table event.
+        // TODO(hjiang): Synchronize the background task and gracefully shutdown.
+        let table_metadata_replay = ReplayTableMetadata {
+            config: mooncake_table_metadata.config.clone(),
+            identity,
+            local_filesystem_optimization_enabled: config.local_filesystem_optimization_enabled,
+            storage_config: config.storage_config.clone(),
+        };
+        tokio::spawn(async move {
+            Self::dump_table_event(
+                table_event_replay_rx,
+                config.test_name,
+                table_metadata_replay,
+            )
+            .await;
+        });
 
         Self {
             chaos_test_arg,
@@ -653,13 +856,65 @@ impl TestEnvironment {
             read_state_manager,
             table_handler,
             event_sender,
-            event_replay_rx,
+            handler_event_replay_rx,
             wal_flush_lsn_rx,
             replication_lsn_tx,
             last_commit_lsn_tx,
             mooncake_table_metadata,
             iceberg_table_config,
         }
+    }
+
+    /// Generate a random string to use as filename.
+    fn generate_random_filename() -> String {
+        const TEST_FILENAME_LEN: usize = 12;
+        const ALLOWED_CHARS: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
+        let mut rng = rand::rng();
+        let random_string: String = (0..TEST_FILENAME_LEN)
+            .map(|_| {
+                let idx = rng.random_range(0..ALLOWED_CHARS.len());
+                ALLOWED_CHARS[idx] as char
+            })
+            .collect();
+        random_string
+    }
+
+    /// Continuously read from table replay channel and dump to local json file.
+    async fn dump_table_event(
+        mut table_event_replay_rx: mpsc::UnboundedReceiver<MooncakeTableEvent>,
+        test_name: &str,
+        table_metadata_replay: ReplayTableMetadata,
+    ) {
+        let filepath = format!("/tmp/chaos_test_{}", Self::generate_random_filename());
+        println!("Mooncake table events for test {test_name} dumped to {filepath}");
+
+        let mut file = tokio::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(filepath)
+            .await
+            .unwrap();
+
+        // Persist table metadata for replay.
+        let json_str = serde_json::to_string(&table_metadata_replay).unwrap();
+        file.write_all(json_str.as_bytes()).await.unwrap();
+        file.write_all(b"\n").await.unwrap();
+
+        // Persist mooncake table events.
+        let mut written_events_count: usize = 0;
+        const WRITREN_EVENT_FLUSH_INTERVAL: usize = 100;
+        while let Some(table_event) = table_event_replay_rx.recv().await {
+            let json_str = serde_json::to_string(&table_event).unwrap();
+            file.write_all(json_str.as_bytes()).await.unwrap();
+            file.write_all(b"\n").await.unwrap();
+
+            written_events_count += 1;
+            if written_events_count % WRITREN_EVENT_FLUSH_INTERVAL == 0 {
+                file.flush().await.unwrap();
+            }
+        }
+        file.flush().await.unwrap();
+        drop(file);
     }
 }
 
@@ -678,7 +933,7 @@ async fn validate_persisted_iceberg_table(
 
     // Use a fresh new cache for new iceberg table manager.
     let cache_temp_dir = tempdir().unwrap();
-    let object_storage_cache = ObjectStorageCache::default_for_test(&cache_temp_dir);
+    let object_storage_cache = create_test_object_storage_cache(&cache_temp_dir);
 
     let mut table = create_mooncake_table(
         mooncake_table_metadata.clone(),
@@ -717,11 +972,23 @@ async fn chaos_test_impl(mut env: TestEnvironment) {
     let cloned_args = env.chaos_test_arg.clone();
 
     let task = tokio::spawn(async move {
-        let mut state = ChaosState::new(read_state_manager, cloned_args);
+        let mut state = ChaosState::new(
+            read_state_manager,
+            cloned_args.seed,
+            test_env_config.deletion_enabled,
+        );
         println!(
             "Test {} is with random seed {}",
             test_env_config.test_name, state.random_seed
         );
+
+        // Attempt read on empty table.
+        check_read_snapshot(
+            &state.read_state_manager,
+            /*requested_read_lsn=*/ Some(0),
+            /*expected_ids=*/ &[],
+        )
+        .await;
 
         for _ in 0..test_env_config.event_count {
             let chaos_events = state.generate_random_events();
@@ -795,7 +1062,7 @@ async fn chaos_test_impl(mut env: TestEnvironment) {
     // Print out events in order if chaos test fails.
     if let Err(e) = task_result {
         // Display all enqueued events for debugging and replay.
-        while let Some(cur_event) = env.event_replay_rx.recv().await {
+        while let Some(cur_event) = env.handler_event_replay_rx.recv().await {
             println!("{cur_event:?}");
         }
         // Propagate the panic to fail the test.
@@ -804,7 +1071,7 @@ async fn chaos_test_impl(mut env: TestEnvironment) {
         }
     } else if env.chaos_test_arg.print_events_on_success {
         // Optionally print events even when the test succeeded, for debugging.
-        while let Some(cur_event) = env.event_replay_rx.recv().await {
+        while let Some(cur_event) = env.handler_event_replay_rx.recv().await {
             println!("{cur_event:?}");
         }
     }
@@ -823,6 +1090,7 @@ async fn test_disk_slice_chaos_on_local_fs() {
         test_name: function_name!(),
         local_filesystem_optimization_enabled: false,
         disk_slice_write_chaos_enabled: true,
+        deletion_enabled: true,
         maintenance_option: TableMaintenanceOption::NoTableMaintenance,
         error_injection_enabled: false,
         event_count: 2000,
@@ -849,6 +1117,7 @@ async fn test_chaos_on_local_fs_with_no_background_maintenance() {
         test_name: function_name!(),
         local_filesystem_optimization_enabled: false,
         disk_slice_write_chaos_enabled: false,
+        deletion_enabled: true,
         maintenance_option: TableMaintenanceOption::NoTableMaintenance,
         error_injection_enabled: false,
         event_count: 3500,
@@ -871,6 +1140,7 @@ async fn test_chaos_on_local_fs_with_index_merge() {
         test_name: function_name!(),
         local_filesystem_optimization_enabled: false,
         disk_slice_write_chaos_enabled: false,
+        deletion_enabled: true,
         maintenance_option: TableMaintenanceOption::IndexMerge,
         error_injection_enabled: false,
         event_count: 3500,
@@ -893,6 +1163,7 @@ async fn test_chaos_on_local_fs_with_data_compaction() {
         test_name: function_name!(),
         local_filesystem_optimization_enabled: false,
         disk_slice_write_chaos_enabled: false,
+        deletion_enabled: true,
         maintenance_option: TableMaintenanceOption::DataCompaction,
         error_injection_enabled: false,
         event_count: 3500,
@@ -919,6 +1190,7 @@ async fn test_local_system_optimization_chaos_with_no_background_maintenance() {
         test_name: function_name!(),
         local_filesystem_optimization_enabled: true,
         disk_slice_write_chaos_enabled: false,
+        deletion_enabled: true,
         maintenance_option: TableMaintenanceOption::NoTableMaintenance,
         error_injection_enabled: false,
         event_count: 3500,
@@ -941,6 +1213,7 @@ async fn test_local_system_optimization_chaos_with_index_merge() {
         test_name: function_name!(),
         local_filesystem_optimization_enabled: true,
         disk_slice_write_chaos_enabled: false,
+        deletion_enabled: true,
         maintenance_option: TableMaintenanceOption::IndexMerge,
         error_injection_enabled: false,
         event_count: 3500,
@@ -963,6 +1236,7 @@ async fn test_local_system_optimization_chaos_with_data_compaction() {
         test_name: function_name!(),
         local_filesystem_optimization_enabled: true,
         disk_slice_write_chaos_enabled: false,
+        deletion_enabled: true,
         maintenance_option: TableMaintenanceOption::DataCompaction,
         error_injection_enabled: false,
         event_count: 3500,
@@ -991,6 +1265,7 @@ async fn test_s3_chaos_with_no_background_maintenance() {
         test_name: function_name!(),
         local_filesystem_optimization_enabled: false,
         disk_slice_write_chaos_enabled: false,
+        deletion_enabled: true,
         maintenance_option: TableMaintenanceOption::NoTableMaintenance,
         error_injection_enabled: false,
         event_count: 3500,
@@ -1012,6 +1287,7 @@ async fn test_s3_chaos_with_index_merge() {
         test_name: function_name!(),
         local_filesystem_optimization_enabled: false,
         disk_slice_write_chaos_enabled: false,
+        deletion_enabled: true,
         maintenance_option: TableMaintenanceOption::IndexMerge,
         error_injection_enabled: false,
         event_count: 3500,
@@ -1033,6 +1309,7 @@ async fn test_s3_chaos_with_data_compaction() {
         test_name: function_name!(),
         local_filesystem_optimization_enabled: false,
         disk_slice_write_chaos_enabled: false,
+        deletion_enabled: true,
         maintenance_option: TableMaintenanceOption::DataCompaction,
         error_injection_enabled: false,
         event_count: 3500,
@@ -1058,6 +1335,7 @@ async fn test_gcs_chaos_with_no_background_maintenance() {
         test_name: function_name!(),
         local_filesystem_optimization_enabled: false,
         disk_slice_write_chaos_enabled: false,
+        deletion_enabled: true,
         maintenance_option: TableMaintenanceOption::NoTableMaintenance,
         error_injection_enabled: false,
         event_count: 3500,
@@ -1079,6 +1357,7 @@ async fn test_gcs_chaos_with_index_merge() {
         test_name: function_name!(),
         local_filesystem_optimization_enabled: false,
         disk_slice_write_chaos_enabled: false,
+        deletion_enabled: true,
         maintenance_option: TableMaintenanceOption::IndexMerge,
         error_injection_enabled: false,
         event_count: 3500,
@@ -1100,6 +1379,7 @@ async fn test_gcs_chaos_with_data_compaction() {
         test_name: function_name!(),
         local_filesystem_optimization_enabled: false,
         disk_slice_write_chaos_enabled: false,
+        deletion_enabled: true,
         maintenance_option: TableMaintenanceOption::DataCompaction,
         error_injection_enabled: false,
         event_count: 3500,
@@ -1123,6 +1403,7 @@ async fn test_chaos_injection_with_no_background_maintenance() {
         test_name: function_name!(),
         local_filesystem_optimization_enabled: false,
         disk_slice_write_chaos_enabled: false,
+        deletion_enabled: true,
         maintenance_option: TableMaintenanceOption::NoTableMaintenance,
         error_injection_enabled: true,
         event_count: 100,
@@ -1145,6 +1426,7 @@ async fn test_chaos_injection_with_index_merge() {
         test_name: function_name!(),
         local_filesystem_optimization_enabled: false,
         disk_slice_write_chaos_enabled: false,
+        deletion_enabled: true,
         maintenance_option: TableMaintenanceOption::IndexMerge,
         error_injection_enabled: true,
         event_count: 100,
@@ -1167,9 +1449,83 @@ async fn test_chaos_injection_with_data_compaction() {
         test_name: function_name!(),
         local_filesystem_optimization_enabled: false,
         disk_slice_write_chaos_enabled: false,
+        deletion_enabled: true,
         maintenance_option: TableMaintenanceOption::DataCompaction,
         error_injection_enabled: true,
         event_count: 100,
+        storage_config: StorageConfig::FileSystem {
+            root_directory,
+            atomic_write_dir: None,
+        },
+    };
+    let env = TestEnvironment::new(test_env_config).await;
+    chaos_test_impl(env).await;
+}
+
+/// ============================
+/// Append-only operation
+/// ============================
+///
+/// Chaos test with no background table maintenance enabled.
+#[named]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_append_only_chaos_on_local_fs_with_no_background_maintenance() {
+    let iceberg_temp_dir = tempdir().unwrap();
+    let root_directory = iceberg_temp_dir.path().to_str().unwrap().to_string();
+    let test_env_config = TestEnvConfig {
+        test_name: function_name!(),
+        local_filesystem_optimization_enabled: false,
+        disk_slice_write_chaos_enabled: false,
+        deletion_enabled: false,
+        maintenance_option: TableMaintenanceOption::NoTableMaintenance,
+        error_injection_enabled: false,
+        event_count: 1000,
+        storage_config: StorageConfig::FileSystem {
+            root_directory,
+            atomic_write_dir: None,
+        },
+    };
+    let env = TestEnvironment::new(test_env_config).await;
+    chaos_test_impl(env).await;
+}
+
+/// Chaos test with index merge enabled by default.
+#[named]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_append_only_chaos_on_local_fs_with_index_merge() {
+    let iceberg_temp_dir = tempdir().unwrap();
+    let root_directory = iceberg_temp_dir.path().to_str().unwrap().to_string();
+    let test_env_config = TestEnvConfig {
+        test_name: function_name!(),
+        local_filesystem_optimization_enabled: false,
+        disk_slice_write_chaos_enabled: false,
+        deletion_enabled: false,
+        maintenance_option: TableMaintenanceOption::IndexMerge,
+        error_injection_enabled: false,
+        event_count: 1000,
+        storage_config: StorageConfig::FileSystem {
+            root_directory,
+            atomic_write_dir: None,
+        },
+    };
+    let env = TestEnvironment::new(test_env_config).await;
+    chaos_test_impl(env).await;
+}
+
+/// Chaos test with data compaction enabled by default.
+#[named]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_append_only_chaos_on_local_fs_with_data_compaction() {
+    let iceberg_temp_dir = tempdir().unwrap();
+    let root_directory = iceberg_temp_dir.path().to_str().unwrap().to_string();
+    let test_env_config = TestEnvConfig {
+        test_name: function_name!(),
+        local_filesystem_optimization_enabled: false,
+        disk_slice_write_chaos_enabled: false,
+        deletion_enabled: false,
+        maintenance_option: TableMaintenanceOption::DataCompaction,
+        error_injection_enabled: false,
+        event_count: 1000,
         storage_config: StorageConfig::FileSystem {
             root_directory,
             atomic_write_dir: None,

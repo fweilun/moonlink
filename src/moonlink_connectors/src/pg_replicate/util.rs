@@ -140,7 +140,11 @@ fn postgres_type_to_arrow_type(
                     )
                 })
                 .collect();
-            Field::new_struct(name, fields, nullable)
+            let mut field = Field::new_struct(name, fields, nullable);
+            let mut metadata = HashMap::new();
+            metadata.insert("PARQUET:field_id".to_string(), field_id.to_string());
+            *field_id += 1;
+            field.with_metadata(metadata)
         }
         Kind::Enum(_) => Field::new(name, DataType::Utf8, nullable),
         _ => {
@@ -221,7 +225,7 @@ fn convert_array_cell(cell: ArrayCell) -> Vec<RowValue> {
         ArrayCell::U32(values) => values
             .into_iter()
             .map(|v| {
-                v.map(|i| RowValue::Int32(i as i32))
+                v.map(|i| RowValue::Int64(i as i64))
                     .unwrap_or(RowValue::Null)
             })
             .collect(),
@@ -304,82 +308,71 @@ fn convert_array_cell(cell: ArrayCell) -> Vec<RowValue> {
                     .unwrap_or(RowValue::Null)
             })
             .collect(),
+        ArrayCell::Composite(values) => values
+            .into_iter()
+            .map(|v| {
+                v.map(|cells| {
+                    let struct_values: Vec<RowValue> =
+                        cells.into_iter().map(|cell| cell.into()).collect();
+                    RowValue::Struct(struct_values)
+                })
+                .unwrap_or(RowValue::Null)
+            })
+            .collect(),
+    }
+}
+
+impl From<Cell> for RowValue {
+    fn from(cell: Cell) -> Self {
+        match cell {
+            Cell::I16(value) => RowValue::Int32(value as i32),
+            Cell::I32(value) => RowValue::Int32(value),
+            Cell::U32(value) => RowValue::Int64(value as i64),
+            Cell::I64(value) => RowValue::Int64(value),
+            Cell::F32(value) => RowValue::Float32(value),
+            Cell::F64(value) => RowValue::Float64(value),
+            Cell::Bool(value) => RowValue::Bool(value),
+            Cell::String(value) => RowValue::ByteArray(value.as_bytes().to_vec()),
+            Cell::Date(value) => {
+                RowValue::Int32(value.signed_duration_since(ARROW_EPOCH).num_days() as i32)
+            }
+            Cell::Time(value) => {
+                let seconds = value.num_seconds_from_midnight() as i64;
+                let nanos = value.nanosecond() as i64;
+                RowValue::Int64(seconds * 1_000_000 + nanos / 1_000)
+            }
+            Cell::TimeStamp(value) => RowValue::Int64(value.and_utc().timestamp_micros()),
+            Cell::TimeStampTz(value) => RowValue::Int64(value.timestamp_micros()),
+            Cell::Uuid(value) => RowValue::FixedLenByteArray(*value.as_bytes()),
+            Cell::Json(value) => RowValue::ByteArray(value.to_string().as_bytes().to_vec()),
+            Cell::Bytes(value) => RowValue::ByteArray(value),
+            Cell::Array(value) => RowValue::Array(convert_array_cell(value)),
+            Cell::Composite(value) => {
+                let struct_values: Vec<RowValue> =
+                    value.into_iter().map(|cell| cell.into()).collect();
+                RowValue::Struct(struct_values)
+            }
+            Cell::Numeric(value) => {
+                match value {
+                    PgNumeric::Value(bigdecimal) => {
+                        let (int_val, _) = bigdecimal.into_bigint_and_exponent();
+                        RowValue::Decimal(int_val.to_i128().unwrap())
+                    }
+                    _ => {
+                        // DevNote:
+                        // nan, inf, -inf will be converted to null
+                        RowValue::Null
+                    }
+                }
+            }
+            Cell::Null => RowValue::Null,
+        }
     }
 }
 
 impl From<PostgresTableRow> for MoonlinkRow {
     fn from(row: PostgresTableRow) -> Self {
-        let mut values = Vec::with_capacity(row.0.values.len());
-        for cell in row.0.values {
-            match cell {
-                Cell::I16(value) => {
-                    values.push(RowValue::Int32(value as i32));
-                }
-                Cell::I32(value) => {
-                    values.push(RowValue::Int32(value));
-                }
-                Cell::U32(value) => {
-                    values.push(RowValue::Int32(value as i32));
-                }
-                Cell::I64(value) => {
-                    values.push(RowValue::Int64(value));
-                }
-                Cell::F32(value) => {
-                    values.push(RowValue::Float32(value));
-                }
-                Cell::F64(value) => {
-                    values.push(RowValue::Float64(value));
-                }
-                Cell::Bool(value) => {
-                    values.push(RowValue::Bool(value));
-                }
-                Cell::String(value) => {
-                    values.push(RowValue::ByteArray(value.as_bytes().to_vec()));
-                }
-                Cell::Date(value) => {
-                    values.push(RowValue::Int32(
-                        value.signed_duration_since(ARROW_EPOCH).num_days() as i32,
-                    ));
-                }
-                Cell::Time(value) => {
-                    let seconds = value.num_seconds_from_midnight() as i64;
-                    let nanos = value.nanosecond() as i64;
-                    values.push(RowValue::Int64(seconds * 1_000_000 + nanos / 1_000))
-                }
-                Cell::TimeStamp(value) => {
-                    values.push(RowValue::Int64(value.and_utc().timestamp_micros()))
-                }
-                Cell::TimeStampTz(value) => values.push(RowValue::Int64(value.timestamp_micros())),
-                Cell::Uuid(value) => {
-                    values.push(RowValue::FixedLenByteArray(*value.as_bytes()));
-                }
-                Cell::Json(value) => {
-                    values.push(RowValue::ByteArray(value.to_string().as_bytes().to_vec()));
-                }
-                Cell::Bytes(value) => {
-                    values.push(RowValue::ByteArray(value));
-                }
-                Cell::Array(value) => {
-                    values.push(RowValue::Array(convert_array_cell(value)));
-                }
-                Cell::Numeric(value) => {
-                    match value {
-                        PgNumeric::Value(bigdecimal) => {
-                            let (int_val, _) = bigdecimal.into_bigint_and_exponent();
-                            values.push(RowValue::Decimal(int_val.to_i128().unwrap()));
-                        }
-                        _ => {
-                            // DevNote:
-                            // nan, inf, -inf will be converted to null
-                            values.push(RowValue::Null);
-                        }
-                    }
-                }
-                Cell::Null => {
-                    values.push(RowValue::Null);
-                }
-            }
-        }
+        let values: Vec<RowValue> = row.0.values.into_iter().map(|cell| cell.into()).collect();
         MoonlinkRow::new(values)
     }
 }
@@ -393,6 +386,7 @@ mod tests {
     use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
     use iceberg::arrow as IcebergArrow;
     use moonlink::row::RowValue;
+    use std::str::FromStr;
 
     #[test]
     fn test_table_schema_to_arrow_schema() {
@@ -542,7 +536,74 @@ mod tests {
                     modifier: 0,
                     nullable: true,
                 },
-                // TODO(hjiang): Add composite type handling.
+                // PostgreSQL type: CREATE TYPE point AS (x int4, y int4);
+                // Column type: point
+                // Arrow type: Struct {x: Int32, y: Int32}
+                ColumnSchema {
+                    name: "point_field".to_string(),
+                    typ: Type::new(
+                        "point".to_string(),
+                        0, // OID doesn't matter for this test
+                        Kind::Composite(vec![
+                            tokio_postgres::types::Field::new("x".to_string(), Type::INT4), // x coordinate
+                            tokio_postgres::types::Field::new("y".to_string(), Type::INT4), // y coordinate
+                        ]),
+                        "public".to_string(),
+                    ),
+                    modifier: 0,
+                    nullable: true,
+                },
+                // PostgreSQL type: CREATE TYPE point AS (x int4, y int4);
+                // Column type: point[]
+                // Arrow type: List<Struct {x: Int32, y: Int32}>
+                ColumnSchema {
+                    name: "point_array_field".to_string(),
+                    typ: Type::new(
+                        "point_array".to_string(),
+                        0, // OID doesn't matter for this test
+                        Kind::Array(Type::new(
+                            "point".to_string(),
+                            0, // OID doesn't matter for this test
+                            Kind::Composite(vec![
+                                tokio_postgres::types::Field::new("x".to_string(), Type::INT4), // x coordinate
+                                tokio_postgres::types::Field::new("y".to_string(), Type::INT4), // y coordinate
+                            ]),
+                            "public".to_string(),
+                        )),
+                        "public".to_string(),
+                    ),
+                    modifier: 0,
+                    nullable: true,
+                },
+                // CREATE TYPE point AS (x int4, y int4);
+                // CREATE TYPE rectangle AS (top_left point);
+                //
+                // Column type: rectangle
+                // Arrow type: Struct {
+                //   top_left:  Struct { x: Int32, y: Int32 },
+                // }
+                ColumnSchema {
+                    name: "rectangle_field".to_string(),
+                    typ: Type::new(
+                        "rectangle".to_string(),
+                        0, // OID doesn't matter for this test
+                        Kind::Composite(vec![tokio_postgres::types::Field::new(
+                            "top_left".to_string(),
+                            Type::new(
+                                "point".to_string(),
+                                0, // OID doesn't matter for this test
+                                Kind::Composite(vec![
+                                    tokio_postgres::types::Field::new("x".to_string(), Type::INT4), // x coordinate
+                                    tokio_postgres::types::Field::new("y".to_string(), Type::INT4), // y coordinate
+                                ]),
+                                "public".to_string(),
+                            ),
+                        )]),
+                        "public".to_string(),
+                    ),
+                    modifier: 0,
+                    nullable: true,
+                },
             ],
             lookup_key: LookupKey::Key {
                 name: "uuid_field".to_string(),
@@ -551,7 +612,7 @@ mod tests {
         };
 
         let (arrow_schema, identity) = postgres_schema_to_moonlink_schema(&table_schema);
-        assert_eq!(arrow_schema.fields().len(), 23);
+        assert_eq!(arrow_schema.fields().len(), 26);
 
         assert_eq!(arrow_schema.field(0).name(), "bool_field");
         assert_eq!(arrow_schema.field(0).data_type(), &DataType::Boolean);
@@ -651,6 +712,24 @@ mod tests {
             &DataType::List(expected_field.into()),
         );
 
+        assert_eq!(arrow_schema.field(23).name(), "point_field");
+        assert!(matches!(
+            arrow_schema.field(23).data_type(),
+            DataType::Struct(_)
+        ));
+
+        assert_eq!(arrow_schema.field(24).name(), "point_array_field");
+        assert!(matches!(
+            arrow_schema.field(24).data_type(),
+            DataType::List(_)
+        ));
+
+        assert_eq!(arrow_schema.field(25).name(), "rectangle_field");
+        assert!(matches!(
+            arrow_schema.field(25).data_type(),
+            DataType::Struct(_)
+        ));
+
         // Check identity property.
         assert_eq!(identity, IdentityProp::Keys(vec![17]));
 
@@ -681,21 +760,36 @@ mod tests {
             (21, "oid_field"),
             (22, "bool_array_field.element"),
             (23, "bool_array_field"),
+            (24, "point_field.x"),
+            (25, "point_field.y"),
+            (26, "point_field"),
+            (27, "point_array_field.element.x"),
+            (28, "point_array_field.element.y"),
+            (29, "point_array_field.element"),
+            (30, "point_array_field"),
+            (31, "rectangle_field.top_left.x"),
+            (32, "rectangle_field.top_left.y"),
+            (33, "rectangle_field.top_left"),
+            (34, "rectangle_field"),
         ] {
             assert_eq!(
                 iceberg_arrow.name_by_field_id(field_id).unwrap(),
-                expected_name
+                expected_name,
+                "field id {} mismatch",
+                field_id,
             );
         }
-        assert!(iceberg_arrow.name_by_field_id(24).is_none());
+        assert!(iceberg_arrow.name_by_field_id(35).is_none());
     }
 
     #[test]
     fn test_postgres_table_row_to_moonlink_row() {
         let postgres_table_row = PostgresTableRow(TableRow {
             values: vec![
+                Cell::I16(0),
                 Cell::I32(1),
-                Cell::I64(2),
+                Cell::U32(2),
+                Cell::I64(3),
                 Cell::F32(std::f32::consts::PI),
                 Cell::F64(std::f64::consts::E),
                 Cell::Bool(true),
@@ -711,37 +805,40 @@ mod tests {
                         .unwrap()
                         .with_timezone(&Utc),
                 ),
-                Cell::Null,
                 Cell::Uuid(uuid::Uuid::parse_str("123e4567-e89b-12d3-a456-426614174000").unwrap()),
+                Cell::Json(serde_json::from_str(r#"{"name":"Alice"}"#).unwrap()),
+                Cell::Null,
             ],
         });
 
         let moonlink_row: MoonlinkRow = postgres_table_row.into();
-        assert_eq!(moonlink_row.values.len(), 12);
-        assert_eq!(moonlink_row.values[0], RowValue::Int32(1));
-        assert_eq!(moonlink_row.values[1], RowValue::Int64(2));
+        assert_eq!(moonlink_row.values.len(), 15);
+        assert_eq!(moonlink_row.values[0], RowValue::Int32(0));
+        assert_eq!(moonlink_row.values[1], RowValue::Int32(1));
+        assert_eq!(moonlink_row.values[2], RowValue::Int64(2));
+        assert_eq!(moonlink_row.values[3], RowValue::Int64(3));
         assert_eq!(
-            moonlink_row.values[2],
+            moonlink_row.values[4],
             RowValue::Float32(std::f32::consts::PI)
         );
         assert_eq!(
-            moonlink_row.values[3],
+            moonlink_row.values[5],
             RowValue::Float64(std::f64::consts::E)
         );
-        assert_eq!(moonlink_row.values[4], RowValue::Bool(true));
+        assert_eq!(moonlink_row.values[6], RowValue::Bool(true));
         let vec = "test".as_bytes().to_vec();
-        assert_eq!(moonlink_row.values[5], RowValue::ByteArray(vec.clone()));
+        assert_eq!(moonlink_row.values[7], RowValue::ByteArray(vec.clone()));
         let string = unsafe { std::str::from_utf8_unchecked(&vec) };
         let array = StringArray::from(vec![string]);
         assert_eq!(array.value(0), "test");
-        assert_eq!(moonlink_row.values[6], RowValue::Int32(19723)); // 2024-01-01 days since epoch
+        assert_eq!(moonlink_row.values[8], RowValue::Int32(19723)); // 2024-01-01 days since epoch
         let array = Date32Array::from(vec![19723]);
         assert_eq!(
             array.value_as_date(0),
             Some(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap())
         );
-        assert_eq!(moonlink_row.values[7], RowValue::Int64(43200000000)); // 12:00:00 in microseconds
-        assert_eq!(moonlink_row.values[8], RowValue::Int64(1704110400000000)); // 2024-01-01 12:00:00 in microseconds
+        assert_eq!(moonlink_row.values[9], RowValue::Int64(43200000000)); // 12:00:00 in microseconds
+        assert_eq!(moonlink_row.values[10], RowValue::Int64(1704110400000000)); // 2024-01-01 12:00:00 in microseconds
         let array = TimestampMicrosecondArray::from(vec![1704110400000000]);
         assert_eq!(
             array.value_as_datetime(0),
@@ -749,7 +846,7 @@ mod tests {
                 NaiveDateTime::parse_from_str("2024-01-01 12:00:00", "%Y-%m-%d %H:%M:%S").unwrap()
             )
         );
-        assert_eq!(moonlink_row.values[9], RowValue::Int64(1704110400000000)); // 2024-01-01 12:00:00 UTC in microseconds
+        assert_eq!(moonlink_row.values[11], RowValue::Int64(1704110400000000)); // 2024-01-01 12:00:00 UTC in microseconds
         let array = TimestampMicrosecondArray::from(vec![1704110400000000]);
         assert_eq!(
             array.value_as_datetime(0),
@@ -757,8 +854,7 @@ mod tests {
                 NaiveDateTime::parse_from_str("2024-01-01 12:00:00", "%Y-%m-%d %H:%M:%S").unwrap()
             )
         );
-        assert_eq!(moonlink_row.values[10], RowValue::Null);
-        if let RowValue::FixedLenByteArray(bytes) = moonlink_row.values[11] {
+        if let RowValue::FixedLenByteArray(bytes) = moonlink_row.values[12] {
             assert_eq!(
                 uuid::Uuid::from_bytes(bytes).to_string(),
                 "123e4567-e89b-12d3-a456-426614174000"
@@ -766,6 +862,157 @@ mod tests {
         } else {
             panic!("Expected fixed length byte array");
         };
+        let vec = r#"{"name":"Alice"}"#.to_string().as_bytes().to_vec();
+        assert_eq!(moonlink_row.values[13], RowValue::ByteArray(vec));
+        assert_eq!(moonlink_row.values[14], RowValue::Null);
+    }
+
+    #[test]
+    fn test_postgres_numeric_row_to_moonlink_row() {
+        let postgres_table_row = PostgresTableRow(TableRow {
+            values: vec![
+                Cell::Numeric(PgNumeric::NaN),
+                Cell::Numeric(PgNumeric::NegativeInf),
+                Cell::Numeric(PgNumeric::PositiveInf),
+                Cell::Numeric(PgNumeric::Value(
+                    bigdecimal::BigDecimal::from_str("12345.6789").unwrap(),
+                )),
+            ],
+        });
+        let moonlink_row: MoonlinkRow = postgres_table_row.into();
+        assert_eq!(moonlink_row.values.len(), 4);
+        assert_eq!(moonlink_row.values[0], RowValue::Null);
+        assert_eq!(moonlink_row.values[1], RowValue::Null);
+        assert_eq!(moonlink_row.values[2], RowValue::Null);
+        assert_eq!(moonlink_row.values[3], RowValue::Decimal(123456789 as i128));
+    }
+
+    #[test]
+    fn test_postgres_composite_to_moonlink_row() {
+        let postgres_table_row = PostgresTableRow(TableRow {
+            values: vec![
+                Cell::I32(1),
+                // Structure:
+                // - Outer composite: {id: i32, tags: Array<String>, nested: NestedComposite}
+                //   - Nested composite: {value: f32, scores: Array<i32>}
+                Cell::Composite(vec![
+                    Cell::I32(100),
+                    Cell::Array(ArrayCell::String(vec![
+                        Some("tag1".to_string()),
+                        Some("tag2".to_string()),
+                    ])),
+                    Cell::Composite(vec![
+                        Cell::F32(3.5),
+                        Cell::Array(ArrayCell::I32(vec![Some(10), Some(20), None])),
+                    ]),
+                ]),
+            ],
+        });
+
+        let moonlink_row: MoonlinkRow = postgres_table_row.into();
+        assert_eq!(moonlink_row.values.len(), 2);
+        assert_eq!(moonlink_row.values[0], RowValue::Int32(1));
+
+        // Check the outer composite/struct field
+        match &moonlink_row.values[1] {
+            RowValue::Struct(outer_fields) => {
+                assert_eq!(outer_fields.len(), 3);
+                assert_eq!(outer_fields[0], RowValue::Int32(100));
+
+                // Check array within struct
+                match &outer_fields[1] {
+                    RowValue::Array(tags) => {
+                        assert_eq!(tags.len(), 2);
+                        assert_eq!(tags[0], RowValue::ByteArray("tag1".as_bytes().to_vec()));
+                        assert_eq!(tags[1], RowValue::ByteArray("tag2".as_bytes().to_vec()));
+                    }
+                    _ => panic!("Expected array in struct"),
+                }
+
+                // Check nested struct within struct
+                match &outer_fields[2] {
+                    RowValue::Struct(inner_fields) => {
+                        assert_eq!(inner_fields.len(), 2);
+                        assert_eq!(inner_fields[0], RowValue::Float32(3.5));
+
+                        // Check array within nested struct
+                        match &inner_fields[1] {
+                            RowValue::Array(scores) => {
+                                assert_eq!(scores.len(), 3);
+                                assert_eq!(scores[0], RowValue::Int32(10));
+                                assert_eq!(scores[1], RowValue::Int32(20));
+                                assert_eq!(scores[2], RowValue::Null);
+                            }
+                            _ => panic!("Expected array in nested struct"),
+                        }
+                    }
+                    _ => panic!("Expected nested struct"),
+                }
+            }
+            _ => panic!("Expected struct"),
+        }
+    }
+
+    #[test]
+    fn test_postgres_array_of_composites_to_moonlink_row() {
+        let postgres_table_row = PostgresTableRow(TableRow {
+            values: vec![
+                Cell::I32(1),
+                // Structure:
+                // - Array of UserComposite: [UserComposite, null, UserComposite]
+                //   - UserComposite: {id: i32, name: String, active: bool}
+                Cell::Array(ArrayCell::Composite(vec![
+                    Some(vec![
+                        Cell::I32(100),
+                        Cell::String("alice".to_string()),
+                        Cell::Bool(true),
+                    ]),
+                    None, // null composite
+                    Some(vec![
+                        Cell::I32(200),
+                        Cell::String("bob".to_string()),
+                        Cell::Bool(false),
+                    ]),
+                ])),
+            ],
+        });
+
+        let moonlink_row: MoonlinkRow = postgres_table_row.into();
+        assert_eq!(moonlink_row.values.len(), 2);
+        assert_eq!(moonlink_row.values[0], RowValue::Int32(1));
+
+        // Check the array of composites
+        match &moonlink_row.values[1] {
+            RowValue::Array(structs) => {
+                assert_eq!(structs.len(), 3);
+
+                // First struct
+                match &structs[0] {
+                    RowValue::Struct(fields) => {
+                        assert_eq!(fields.len(), 3);
+                        assert_eq!(fields[0], RowValue::Int32(100));
+                        assert_eq!(fields[1], RowValue::ByteArray("alice".as_bytes().to_vec()));
+                        assert_eq!(fields[2], RowValue::Bool(true));
+                    }
+                    _ => panic!("Expected struct in array"),
+                }
+
+                // Second is null
+                assert_eq!(structs[1], RowValue::Null);
+
+                // Third struct
+                match &structs[2] {
+                    RowValue::Struct(fields) => {
+                        assert_eq!(fields.len(), 3);
+                        assert_eq!(fields[0], RowValue::Int32(200));
+                        assert_eq!(fields[1], RowValue::ByteArray("bob".as_bytes().to_vec()));
+                        assert_eq!(fields[2], RowValue::Bool(false));
+                    }
+                    _ => panic!("Expected struct in array"),
+                }
+            }
+            _ => panic!("Expected array"),
+        }
     }
 
     #[test]

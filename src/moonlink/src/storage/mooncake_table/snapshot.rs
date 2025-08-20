@@ -8,11 +8,12 @@ use crate::error::Result;
 use crate::storage::cache::object_storage::base_cache::{
     CacheEntry as DataFileCacheEntry, CacheTrait, FileMetadata,
 };
-use crate::storage::cache::object_storage::object_storage_cache::ObjectStorageCache;
 use crate::storage::compaction::table_compaction::{CompactedDataEntry, RemappedRecordLocation};
 use crate::storage::filesystem::accessor::base_filesystem_accessor::BaseFileSystemAccess;
 use crate::storage::index::{cache_utils as index_cache_utils, FileIndex};
 use crate::storage::mooncake_table::persistence_buffer::UnpersistedRecords;
+use crate::storage::mooncake_table::replay::event_id_assigner::EventIdAssigner;
+use crate::storage::mooncake_table::replay::replay_events::BackgroundEventId;
 use crate::storage::mooncake_table::shared_array::SharedRowBufferSnapshot;
 use crate::storage::mooncake_table::BatchIdCounter;
 use crate::storage::mooncake_table::MoonlinkRow;
@@ -65,7 +66,7 @@ pub(crate) struct SnapshotTableState {
     pub(super) last_commit: RecordLocation,
 
     /// Object storage cache.
-    pub(super) object_storage_cache: ObjectStorageCache,
+    pub(super) object_storage_cache: Arc<dyn CacheTrait>,
 
     /// Filesystem accessor.
     pub(super) filesystem_accessor: Arc<dyn BaseFileSystemAccess>,
@@ -81,6 +82,9 @@ pub(crate) struct SnapshotTableState {
 
     /// Batch ID counter for non-streaming operations
     pub(super) non_streaming_batch_id_counter: Arc<BatchIdCounter>,
+
+    /// Used to generated monotonically increasing id to differentiate each replay events.
+    pub(super) event_id_assigner: EventIdAssigner,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -93,7 +97,12 @@ pub struct PuffinDeletionBlobAtRead {
     pub blob_size: u32,
 }
 
-pub(crate) struct MooncakeSnapshotOutput {
+#[derive(Clone)]
+pub struct MooncakeSnapshotOutput {
+    /// Table event id.
+    pub(crate) id: BackgroundEventId,
+    /// UUID for the current mooncake snapshot result.
+    pub(crate) uuid: uuid::Uuid,
     /// Committed LSN for mooncake snapshot.
     pub(crate) commit_lsn: u64,
     /// Iceberg snapshot payload.
@@ -104,6 +113,29 @@ pub(crate) struct MooncakeSnapshotOutput {
     pub(crate) data_compaction_payload: DataCompactionMaintenanceStatus,
     /// Evicted local data cache files to delete.
     pub(crate) evicted_data_files_to_delete: Vec<String>,
+    /// Optional mooncake snapshot dump.
+    pub(crate) current_snapshot: Option<Snapshot>,
+}
+
+impl std::fmt::Debug for MooncakeSnapshotOutput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MooncakeSnapshotOutput")
+            .field("id", &self.id)
+            .field("uuid", &self.uuid)
+            .field("commit", &self.commit_lsn)
+            .field("iceberg_snapshot_payload", &self.iceberg_snapshot_payload)
+            .field(
+                "file_indices_merge_payload",
+                &self.file_indices_merge_payload,
+            )
+            .field("data_compaction_payload", &self.data_compaction_payload)
+            .field(
+                "evicted data files count",
+                &self.evicted_data_files_to_delete.len(),
+            )
+            .field("current_snapshot", &self.current_snapshot)
+            .finish()
+    }
 }
 
 /// Committed deletion record to persist.
@@ -127,10 +159,11 @@ impl SnapshotTableState {
     pub(super) async fn new(
         iceberg_warehouse_location: String,
         metadata: Arc<MooncakeTableMetadata>,
-        object_storage_cache: ObjectStorageCache,
+        object_storage_cache: Arc<dyn CacheTrait>,
         filesystem_accessor: Arc<dyn BaseFileSystemAccess>,
         current_snapshot: Snapshot,
         non_streaming_batch_id_counter: Arc<BatchIdCounter>,
+        event_id_assigner: EventIdAssigner,
     ) -> Result<Self> {
         let mut batches = BTreeMap::new();
         // Properly load a batch ID from the counter to ensure correspondence with MemSlice.
@@ -155,6 +188,7 @@ impl SnapshotTableState {
             uncommitted_deletion_log: Vec::new(),
             unpersisted_records: UnpersistedRecords::new(table_config),
             non_streaming_batch_id_counter,
+            event_id_assigner,
         })
     }
 
@@ -450,6 +484,8 @@ impl SnapshotTableState {
         mut task: SnapshotTask,
         opt: SnapshotOption,
     ) -> MooncakeSnapshotOutput {
+        // Validate event id is assigned.
+        assert!(opt.id.is_some());
         // Validate mooncake table operation invariants.
         self.validate_mooncake_table_invariants(&task, &opt);
         // Validate persistence results.
@@ -596,11 +632,14 @@ impl SnapshotTableState {
         }
 
         MooncakeSnapshotOutput {
+            id: opt.id.unwrap(),
+            uuid: opt.uuid,
             commit_lsn: self.current_snapshot.snapshot_version,
             iceberg_snapshot_payload,
             data_compaction_payload,
             file_indices_merge_payload,
             evicted_data_files_to_delete,
+            current_snapshot: opt.dump_snapshot.then(|| self.current_snapshot.clone()),
         }
     }
 
@@ -675,7 +714,7 @@ impl SnapshotTableState {
             for (file, file_attrs) in slice.output_files().iter() {
                 ma::assert_gt!(file_attrs.file_size, 0);
                 assert!(task
-                    .disk_file_lsn_map
+                    .new_disk_file_lsn_map
                     .insert(file.file_id(), write_lsn)
                     .is_none());
                 let unique_file_id = self.get_table_unique_file_id(file.file_id());
@@ -708,17 +747,9 @@ impl SnapshotTableState {
                     .is_none());
             }
 
-            // remap deletions written *after* this slice’s LSN
-            // We set to write_lsn - 1 to maintain consistency with deletion LSNs from the streaming case.
-            // In the case a streaming transaction commits before flush, we assign disk_slice.writer_lsn = commit_lsn.
-            // The corresponding deletions have lsn = commit_lsn - 1, so we need >= write_lsn - 1
-            // to ensure these deletions get remapped from memory to disk locations.
-            // Use wrapping_sub(1) for the special initial copy case where write_lsn is 0. In this case we still want to remap the deletion log.
-            let cut = self
-                .committed_deletion_log
-                .partition_point(|d| d.lsn < write_lsn.wrapping_sub(1));
-
-            for deletion in self.committed_deletion_log[cut..].iter_mut() {
+            // If a committed deletion still points to a MemoryBatch that is being flushed
+            // in this slice, remap it to the corresponding DiskFile location and apply it.
+            for deletion in self.committed_deletion_log.iter_mut() {
                 if let Some(RecordLocation::DiskFile(file_id, row_idx)) =
                     slice.remap_deletion_if_needed(deletion)
                 {
@@ -764,12 +795,18 @@ impl SnapshotTableState {
         deletions: &[RawDeletionRecord],
         index_lookup_result: Vec<RecordLocation>,
         file_id_to_lsn: &HashMap<FileId, u64>,
+        batch_id_to_lsn: &HashMap<u64, u64>,
     ) -> Vec<ProcessedDeletionRecord> {
         let mut candidates: Vec<RecordLocation> = index_lookup_result
             .into_iter()
             .filter(|loc| {
                 !self.is_deleted(loc)
-                    && Self::is_visible(loc, file_id_to_lsn, deletions.first().unwrap().lsn)
+                    && Self::is_visible(
+                        loc,
+                        file_id_to_lsn,
+                        batch_id_to_lsn,
+                        deletions.first().unwrap().lsn,
+                    )
             })
             .collect();
         // This optimization is important when working with table without primary key.
@@ -782,12 +819,13 @@ impl SnapshotTableState {
                 .map(|(loc, deletion)| Self::build_processed_deletion(deletion, loc))
                 .collect(),
             Ordering::Less => {
-                panic!("find less than expected candidates to deletions {deletions:?}")
+                panic!("find less than expected candidates to deletions {deletions:?}, candidates: {candidates:?}, batch_id_to_lsn: {batch_id_to_lsn:?}, file_id_to_lsn: {file_id_to_lsn:?}")
             }
             Ordering::Greater => {
                 let mut processed_deletions = Vec::new();
                 // multiple candidates → disambiguate via full row identity comparison.
                 for deletion in deletions.iter() {
+                    assert!(deletion.row_identity.is_some(), "deletion: {deletion:?}, candidates: {candidates:?}, batch_id_to_lsn: {batch_id_to_lsn:?}, file_id_to_lsn: {file_id_to_lsn:?}");
                     let identity = deletion
                         .row_identity
                         .as_ref()
@@ -841,9 +879,17 @@ impl SnapshotTableState {
         }
     }
 
-    fn is_visible(loc: &RecordLocation, file_id_to_lsn: &HashMap<FileId, u64>, lsn: u64) -> bool {
+    fn is_visible(
+        loc: &RecordLocation,
+        file_id_to_lsn: &HashMap<FileId, u64>,
+        batch_id_to_lsn: &HashMap<u64, u64>,
+        lsn: u64,
+    ) -> bool {
         match loc {
-            RecordLocation::MemoryBatch(_, _) => true,
+            RecordLocation::MemoryBatch(batch_id, _) => {
+                batch_id_to_lsn.get(batch_id).is_none()
+                    || batch_id_to_lsn.get(batch_id).unwrap() <= &lsn
+            }
             RecordLocation::DiskFile(file_id, _) => {
                 file_id_to_lsn.get(file_id).is_none()
                     || file_id_to_lsn.get(file_id).unwrap() <= &lsn
@@ -957,7 +1003,7 @@ impl SnapshotTableState {
             }
         });
         self.add_processed_deletion(already_processed, task.commit_lsn_baseline);
-        new_deletions.sort_by_key(|deletion| deletion.lookup_key);
+        new_deletions.sort_by(|a, b| a.lookup_key.cmp(&b.lookup_key).then(a.lsn.cmp(&b.lsn)));
         if new_deletions.is_empty() {
             return;
         }
@@ -993,7 +1039,8 @@ impl SnapshotTableState {
                 .match_deletions_with_identical_key_and_lsn(
                     deletions,
                     lookup_result,
-                    &task.disk_file_lsn_map,
+                    &task.new_disk_file_lsn_map,
+                    &task.flushing_batch_lsn_map,
                 )
                 .await;
             self.add_processed_deletion(processed_deletions, task.commit_lsn_baseline);

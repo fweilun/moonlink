@@ -1,10 +1,11 @@
 /// Table handler state manages table event process states.
 use crate::storage::mooncake_table::AlterTableRequest;
 use crate::storage::mooncake_table::DataCompactionResult;
-use crate::storage::mooncake_table::MaintenanceOption;
-use crate::storage::mooncake_table::SnapshotOption;
+use crate::storage::snapshot_options::MaintenanceOption;
+use crate::storage::snapshot_options::SnapshotOption;
 use crate::table_notify::TableEvent;
 use crate::Result;
+use more_asserts as ma;
 use tokio::sync::{broadcast, watch};
 use tracing::error;
 
@@ -134,6 +135,7 @@ impl TableHandlerState {
         table_maintenance_completion_tx: broadcast::Sender<Result<()>>,
         force_snapshot_completion_tx: watch::Sender<Option<Result<u64>>>,
         initial_persistence_lsn: Option<u64>,
+        iceberg_snapshot_lsn: Option<u64>,
     ) -> Self {
         Self {
             iceberg_snapshot_result_consumed: true,
@@ -144,7 +146,7 @@ impl TableHandlerState {
             latest_commit_lsn: None,
             special_table_state: SpecialTableState::Normal,
             // Force snapshot fields.
-            table_consistent_view_lsn: initial_persistence_lsn,
+            table_consistent_view_lsn: iceberg_snapshot_lsn,
             largest_force_snapshot_lsn: None,
             force_snapshot_completion_tx,
             // Table maintenance fields.
@@ -211,8 +213,10 @@ impl TableHandlerState {
             force_create = true;
         }
         SnapshotOption {
+            id: None,
             uuid,
             force_create,
+            dump_snapshot: false,
             skip_iceberg_snapshot: self.iceberg_snapshot_ongoing,
             index_merge_option: self.get_index_merge_maintenance_option(),
             data_compaction_option: self.get_data_compaction_maintenance_option(),
@@ -396,7 +400,7 @@ impl TableHandlerState {
             alter_table_lsn, ..
         } = self.special_table_state
         {
-            assert!(iceberg_snapshot_lsn <= alter_table_lsn);
+            ma::assert_le!(iceberg_snapshot_lsn, alter_table_lsn);
             iceberg_snapshot_lsn == alter_table_lsn
         } else {
             false
@@ -423,11 +427,11 @@ impl TableHandlerState {
         self.special_table_state = SpecialTableState::InitialCopy;
     }
 
-    pub(crate) fn finish_initial_copy(&mut self) {
+    pub(crate) fn finish_initial_copy(&mut self, lsn: u64) {
         assert_eq!(self.special_table_state, SpecialTableState::InitialCopy);
         self.special_table_state = SpecialTableState::Normal;
-        self.latest_commit_lsn = Some(0);
-        self.table_consistent_view_lsn = Some(0);
+        self.latest_commit_lsn = Some(lsn);
+        self.table_consistent_view_lsn = Some(lsn);
     }
 
     /// ============================

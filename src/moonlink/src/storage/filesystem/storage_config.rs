@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Deserialize, PartialEq, Serialize)]
 pub enum StorageConfig {
     #[cfg(feature = "storage-fs")]
+    #[serde(rename = "fs")]
     FileSystem {
         root_directory: String,
         // Used for atomic write operation: write files to a temporary directory and rename.
@@ -17,6 +18,7 @@ pub enum StorageConfig {
         atomic_write_dir: Option<String>,
     },
     #[cfg(feature = "storage-s3")]
+    #[serde(rename = "s3")]
     S3 {
         access_key_id: String,
         secret_access_key: String,
@@ -26,6 +28,7 @@ pub enum StorageConfig {
         endpoint: Option<String>,
     },
     #[cfg(feature = "storage-gcs")]
+    #[serde(rename = "gcs")]
     Gcs {
         /// GCS project.
         project: String,
@@ -42,6 +45,8 @@ pub enum StorageConfig {
         /// Used for fake GCS server.
         #[serde(default)]
         disable_auth: bool,
+        /// Used to overwrite write option.
+        multipart_upload_threshold: Option<usize>,
     },
 }
 
@@ -81,6 +86,7 @@ impl std::fmt::Debug for StorageConfig {
                 bucket,
                 endpoint,
                 disable_auth,
+                multipart_upload_threshold,
                 access_key_id: _,
                 secret_access_key: _,
             } => f
@@ -90,6 +96,7 @@ impl std::fmt::Debug for StorageConfig {
                 .field("bucket", bucket)
                 .field("endpoint", endpoint)
                 .field("disable_auth", disable_auth)
+                .field("multipart_upload_threshold", multipart_upload_threshold)
                 .field("access key id", &"xxxxx")
                 .field("secret access key", &"xxxxx")
                 .finish(),
@@ -159,7 +166,7 @@ mod tests {
     fn test_deserialize_storage_config_with_only_necessary() {
         let json = r#"
         {
-            "Gcs": {
+            "gcs": {
                 "project": "test-project",
                 "region": "us-west1",
                 "bucket": "test-bucket",
@@ -180,6 +187,7 @@ mod tests {
                 secret_access_key: "fake-secret-key".to_string(),
                 endpoint: None,
                 disable_auth: false,
+                multipart_upload_threshold: None,
             }
         );
     }

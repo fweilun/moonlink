@@ -3,30 +3,35 @@ all-features = true
 
 [licenses]
 allow = [
-    "MIT",
     "Apache-2.0",
-    "Unicode-3.0",
+
     "Zlib",
+    "BSD-2-Clause",
     "BSD-3-Clause",
+    "BSL-1.0",
+    "bzip2-1.0.6",
     "CC0-1.0",
-    "ISC",
     "CDLA-Permissive-2.0",
+    "ISC",
     # Moonlink permission.
     "LicenseRef-BSL-1.1",
+    "MIT",
+    "MPL-2.0",
+    "Unicode-3.0",
 ]
 
 [sources]
 unknown-git = "deny"
 allow-git = [
     "https://github.com/apache/iceberg-rust.git",
-    "https://github.com/Mooncake-Labs/rust-postgres.git?rev=e6bd7d5cacc4eb7a03930b5ca3db1ef9caf0a3d5",
+    "https://github.com/Mooncake-Labs/rust-postgres.git?rev=4fda9c1bece3b93359ca1eb2779458fc1c080eae",
 ]
 
 # TODO(hjiang): Cleanup these unmaintained crates.
 [advisories]
 ignore = [
-    "RUSTSEC-2024-0436", # paste - unmaintained
     "RUSTSEC-2023-0071", # rsa - marvin attack
+    "RUSTSEC-2024-0436", # paste - unmaintained
 ]
 
 # TODO(hjiang): Resolve all duplicate dependencies.
