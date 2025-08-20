@@ -210,7 +210,20 @@ async fn create_table(
     let arrow_schema = Schema::new(fields);
 
     // Serialization not expect to fail.
-    let serialized_table_config = serde_json::to_string(&payload.table_config).unwrap();
+    let serialized_table_config = match serde_json::to_string(&payload.table_config) {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            error!("serialize table_config failed: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "table_creation_failed".to_string(),
+                    message: format!("Failed to create table: {e}"),
+                }),
+            ));
+        }
+    };
+    // let serialized_table_config = serde_json::to_string(&table_config).unwrap();
 
     // Create table in backend
     match state
