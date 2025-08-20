@@ -4,16 +4,15 @@ pub mod json_converter;
 pub mod moonlink_rest_sink;
 pub mod rest_source;
 
+use crate::replication_state::ReplicationState;
 use crate::rest_ingest::moonlink_rest_sink::RestSink;
+use crate::rest_ingest::moonlink_rest_sink::TableStatus;
 use crate::rest_ingest::rest_source::{EventRequest, RestSource};
 use crate::Result;
 use arrow_schema::Schema;
 use moonlink::TableEvent;
-use std::collections::HashMap;
-use std::sync::{
-    atomic::{AtomicU32, Ordering},
-    Arc,
-};
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 use tokio::sync::{mpsc, watch};
 use tracing::{debug, warn};
 
@@ -45,6 +44,7 @@ pub struct RestApiConnection {
     cmd_rx: Option<mpsc::Receiver<RestCommand>>,
     rest_request_rx: Option<mpsc::Receiver<EventRequest>>,
     next_src_table_id_generator: AtomicU32,
+    replication_state: Arc<ReplicationState>,
 }
 
 impl RestApiConnection {
@@ -58,6 +58,7 @@ impl RestApiConnection {
             cmd_rx: Some(cmd_rx),
             rest_request_rx: Some(rest_request_rx),
             next_src_table_id_generator: AtomicU32::new(1),
+            replication_state: ReplicationState::new(),
         })
     }
 
@@ -68,6 +69,10 @@ impl RestApiConnection {
 
     pub fn get_rest_request_sender(&self) -> mpsc::Sender<EventRequest> {
         self.rest_request_tx.clone()
+    }
+
+    pub fn get_replication_state(&self) -> Arc<ReplicationState> {
+        self.replication_state.clone()
     }
 
     /// Add a table to the REST source and sink (sends command to event loop)
@@ -134,7 +139,7 @@ impl RestApiConnection {
 
     /// Spawn REST API event loop task (following PostgreSQL's spawn_replication_task pattern)
     pub async fn spawn_rest_task(&mut self) -> tokio::task::JoinHandle<Result<()>> {
-        let sink = RestSink::new();
+        let sink = RestSink::new(self.replication_state.clone());
         let (cmd_rx, rest_request_rx) = self.start_replication();
 
         tokio::spawn(async move { run_rest_event_loop(sink, cmd_rx, rest_request_rx).await })
@@ -153,10 +158,6 @@ pub async fn run_rest_event_loop(
     // Create RestSource that we'll use for processing
     let mut rest_source = RestSource::new();
 
-    // UNDON, send status back for REST API if wait=true
-    let mut _flush_lsn_rxs: HashMap<SrcTableId, watch::Receiver<u64>> = HashMap::new();
-    let mut _wal_flush_lsn_rxs: HashMap<SrcTableId, watch::Receiver<u64>> = HashMap::new();
-
     loop {
         tokio::select! {
             Some(cmd) = cmd_rx.recv() => match cmd {
@@ -164,25 +165,25 @@ pub async fn run_rest_event_loop(
                     debug!("Adding REST table '{}' with src_table_id {}", src_table_name, src_table_id);
 
                     // Add to sink (handles table events)
-                    sink.add_table(src_table_id, event_sender, commit_lsn_tx);
+                    let table_status = TableStatus {
+                        _wal_flush_lsn_rx: wal_flush_lsn_rx,
+                        _flush_lsn_rx: flush_lsn_rx,
+                        event_sender,
+                        commit_lsn_tx,
+                    };
+                    sink.add_table(src_table_id, table_status)?;
 
                     // Add to source (handles schema and request processing)
-                    rest_source.add_table(src_table_name.clone(), src_table_id, schema);
-
-                    _flush_lsn_rxs.insert(src_table_id, flush_lsn_rx);
-                    _wal_flush_lsn_rxs.insert(src_table_id, wal_flush_lsn_rx);
-
+                    rest_source.add_table(src_table_name.clone(), src_table_id, schema)?;
                 }
                 RestCommand::DropTable { src_table_name, src_table_id } => {
                     debug!("Dropping REST table '{}' with src_table_id {}", src_table_name, src_table_id);
 
                     // Remove from sink
-                    sink.drop_table(src_table_id);
+                    sink.drop_table(src_table_id)?;
 
                     // Remove from source
-                    rest_source.remove_table(&src_table_name);
-                    _flush_lsn_rxs.remove(&src_table_id);
-                    _wal_flush_lsn_rxs.remove(&src_table_id);
+                    rest_source.remove_table(&src_table_name)?;
                 }
                 RestCommand::Shutdown => {
                     debug!("received shutdown command");
@@ -192,18 +193,19 @@ pub async fn run_rest_event_loop(
             // Process REST requests directly (similar to how PostgreSQL processes CDC events)
             Some(request) = rest_request_rx.recv() => {
                 // Process the request and generate events
-                match rest_source.process_request(request) {
+                match rest_source.process_request(&request) {
                     Ok(rest_events) => {
                         // Send all events to be processed by the sink
                         for rest_event in rest_events {
-                            if let Err(e) = sink.process_rest_event(rest_event).await {
+                            let rest_event_proc_result = sink.process_rest_event(rest_event).await;
+                            if let Err(e) = &rest_event_proc_result {
                                 warn!(error = ?e, "failed to process REST event");
                                 break; // Stop processing further events on error
                             }
                         }
                     }
                     Err(e) => {
-                        warn!(error = ?e, "failed to process REST request");
+                        warn!(error = ?e, "failed to process REST request {:?}", request);
                     }
                 }
             }

@@ -11,12 +11,13 @@ use crate::error::Result;
 use crate::sqlite::sqlite_conn_wrapper::SqliteConnWrapper;
 use crate::sqlite::utils;
 use moonlink::{MoonlinkTableConfig, MoonlinkTableSecret};
+use moonlink_error::{ErrorStatus, ErrorStruct};
 
 /// Default sqlite database filename.
 const METADATA_DATABASE_FILENAME: &str = "moonlink_metadata_store.sqlite";
-/// SQL statements for moonlink metadata table mooncake_database.
+/// SQL statements for moonlink metadata table database.
 const CREATE_TABLE_SCHEMA_SQL: &str = include_str!("sql/create_tables.sql");
-/// SQL statements for moonlink secret table mooncake_database.
+/// SQL statements for moonlink secret table database.
 const CREATE_SECRET_SCHEMA_SQL: &str = include_str!("sql/create_secrets.sql");
 
 pub struct SqliteMetadataStore {
@@ -36,8 +37,8 @@ impl MetadataStoreTrait for SqliteMetadataStore {
         let rows = sqlx::query(
             r#"
             SELECT 
-                t.mooncake_database,
-                t.mooncake_table,
+                t."database",
+                t."table",
                 t.src_table_name,
                 t.src_table_uri,
                 t.config,
@@ -49,8 +50,8 @@ impl MetadataStoreTrait for SqliteMetadataStore {
                 s.project
             FROM tables t
             LEFT JOIN secrets s
-                ON t.mooncake_database = s.mooncake_database
-                AND t.mooncake_table = s.mooncake_table
+                ON t."database" = s."database"
+                AND t."table" = s."table"
             "#,
         )
         .fetch_all(&sqlite_conn.pool)
@@ -58,8 +59,8 @@ impl MetadataStoreTrait for SqliteMetadataStore {
 
         let mut metadata_entries = Vec::with_capacity(rows.len());
         for row in rows {
-            let mooncake_database: String = row.get("mooncake_database");
-            let mooncake_table: String = row.get("mooncake_table");
+            let database: String = row.get("database");
+            let table: String = row.get("table");
             let src_table_name: String = row.get("src_table_name");
             let src_table_uri: String = row.get("src_table_uri");
             let serialized_config: String = row.get("config");
@@ -80,8 +81,8 @@ impl MetadataStoreTrait for SqliteMetadataStore {
                 config_utils::deserialize_moonlink_table_config(json_value, secret_entry)?;
 
             metadata_entries.push(TableMetadataEntry {
-                mooncake_database,
-                mooncake_table,
+                database,
+                table,
                 src_table_name,
                 src_table_uri,
                 moonlink_table_config,
@@ -93,8 +94,8 @@ impl MetadataStoreTrait for SqliteMetadataStore {
 
     async fn store_table_metadata(
         &self,
-        mooncake_database: &str,
-        mooncake_table: &str,
+        database: &str,
+        table: &str,
         src_table_name: &str,
         src_table_uri: &str,
         moonlink_table_config: MoonlinkTableConfig,
@@ -127,12 +128,12 @@ impl MetadataStoreTrait for SqliteMetadataStore {
         // Insert into tables.
         let rows_affected = sqlx::query(
             r#"
-            INSERT INTO tables ("mooncake_database", "mooncake_table", src_table_name, src_table_uri, config)
+            INSERT INTO tables ("database", "table", src_table_name, src_table_uri, config)
             VALUES (?, ?, ?, ?, ?);
             "#,
         )
-        .bind(mooncake_database)
-        .bind(mooncake_table)
+        .bind(database)
+        .bind(table)
         .bind(src_table_name)
         .bind(src_table_uri)
         .bind(serialized_config)
@@ -140,19 +141,22 @@ impl MetadataStoreTrait for SqliteMetadataStore {
         .await?
         .rows_affected();
         if rows_affected != 1 {
-            return Err(Error::SqliteRowCountError(1, rows_affected as u32));
+            return Err(Error::SqliteRowCountError(ErrorStruct::new(
+                format!("expected 1 row affected, but got {rows_affected}"),
+                ErrorStatus::Permanent,
+            )));
         }
 
         // Insert into mooncake_secrets if present
         if let Some(secret) = moonlink_table_secret {
             let rows_affected = sqlx::query(
                 r#"
-                INSERT INTO secrets ("mooncake_database", "mooncake_table", secret_type, key_id, secret, endpoint, region, project)
+                INSERT INTO secrets ("database", "table", secret_type, key_id, secret, endpoint, region, project)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?);
                 "#,
             )
-            .bind(mooncake_database)
-            .bind(mooncake_table)
+            .bind(database)
+            .bind(table)
             .bind(secret.get_secret_type())
             .bind(secret.key_id)
             .bind(secret.secret)
@@ -163,7 +167,10 @@ impl MetadataStoreTrait for SqliteMetadataStore {
             .await?
             .rows_affected();
             if rows_affected != 1 {
-                return Err(Error::SqliteRowCountError(1, rows_affected as u32));
+                return Err(Error::SqliteRowCountError(ErrorStruct::new(
+                    format!("expected 1 row affected, but got {rows_affected}"),
+                    ErrorStatus::Permanent,
+                )));
             }
         }
 
@@ -172,35 +179,31 @@ impl MetadataStoreTrait for SqliteMetadataStore {
         Ok(())
     }
 
-    async fn delete_table_metadata(
-        &self,
-        mooncake_database: &str,
-        mooncake_table: &str,
-    ) -> Result<()> {
+    async fn delete_table_metadata(&self, database: &str, table: &str) -> Result<()> {
         let sqlite_conn = SqliteConnWrapper::new(&self.database_uri).await?;
         let mut tx = sqlite_conn.pool.begin().await?;
 
         // Delete from metadata table.
-        let rows_affected = sqlx::query(
-            r#"DELETE FROM tables  WHERE "mooncake_database" = ? AND "mooncake_table" = ?"#,
-        )
-        .bind(mooncake_database)
-        .bind(mooncake_table)
-        .execute(&mut *tx)
-        .await?
-        .rows_affected();
+        let rows_affected =
+            sqlx::query(r#"DELETE FROM tables  WHERE "database" = ? AND "table" = ?"#)
+                .bind(database)
+                .bind(table)
+                .execute(&mut *tx)
+                .await?
+                .rows_affected();
         if rows_affected != 1 {
-            return Err(Error::SqliteRowCountError(1, rows_affected as u32));
+            return Err(Error::SqliteRowCountError(ErrorStruct::new(
+                format!("expected 1 row affected, but got {rows_affected}"),
+                ErrorStatus::Permanent,
+            )));
         }
 
         // Delete from secret table.
-        sqlx::query(
-            r#"DELETE FROM secrets WHERE "mooncake_database" = ? AND "mooncake_table" = ?"#,
-        )
-        .bind(mooncake_database)
-        .bind(mooncake_table)
-        .execute(&mut *tx)
-        .await?;
+        sqlx::query(r#"DELETE FROM secrets WHERE "database" = ? AND "table" = ?"#)
+            .bind(database)
+            .bind(table)
+            .execute(&mut *tx)
+            .await?;
 
         tx.commit().await?;
 

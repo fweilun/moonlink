@@ -13,12 +13,12 @@ pub use storage::storage_utils::create_data_file;
 pub(crate) use storage::NonEvictableHandle;
 pub use storage::{
     AccessorConfig, BaseFileSystemAccess, CacheTrait, DataCompactionConfig, DiskSliceWriterConfig,
-    EventSyncReceiver, FileIndexMergeConfig, FileSystemAccessor, IcebergPersistenceConfig,
-    IcebergTableConfig, IcebergTableManager, MooncakeTable, MooncakeTableConfig,
-    MoonlinkSecretType, MoonlinkTableConfig, MoonlinkTableSecret, ObjectStorageCache,
-    ObjectStorageCacheConfig, PersistentWalMetadata, SnapshotReadOutput, StorageConfig,
-    TableEventManager, TableManager, TableSnapshotStatus, TableStatusReader, WalConfig, WalManager,
-    WalTransactionState,
+    EventSyncReceiver, FileIndexMergeConfig, FileSystemAccessor, FsChaosConfig, FsRetryConfig,
+    FsTimeoutConfig, IcebergPersistenceConfig, IcebergTableConfig, IcebergTableManager,
+    MooncakeTable, MooncakeTableConfig, MoonlinkSecretType, MoonlinkTableConfig,
+    MoonlinkTableSecret, ObjectStorageCache, ObjectStorageCacheConfig, PersistentWalMetadata,
+    SnapshotReadOutput, StorageConfig, TableEventManager, TableManager, TableSnapshotStatus,
+    TableStatusReader, WalConfig, WalManager, WalTransactionState,
 };
 pub use table_handler::TableHandler;
 pub use table_handler_timer::TableHandlerTimer;
@@ -26,7 +26,7 @@ pub use table_notify::TableEvent;
 pub use union_read::{ReadState, ReadStateFilepathRemap, ReadStateManager};
 
 #[cfg(any(test, feature = "test-utils"))]
-pub use union_read::decode_read_state_for_testing;
+pub use union_read::{decode_read_state_for_testing, decode_serialized_read_state_for_testing};
 
 #[cfg(feature = "bench")]
 pub use storage::GlobalIndex;
