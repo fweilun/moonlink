@@ -475,7 +475,7 @@ pub struct MooncakeTable {
 
     /// snapshot stats
     snapshot_stats: SnapshotStats,
-  
+
     /// Table replay sender.
     event_replay_tx: Option<mpsc::UnboundedSender<MooncakeTableEvent>>,
 
@@ -1016,19 +1016,6 @@ impl MooncakeTable {
         );
     }
 
-    /// If a mooncake snapshot is not going to be created, return false immediately.
-    #[must_use]
-    pub fn create_snapshot(&mut self, opt: SnapshotOption) -> bool {
-        if !self.next_snapshot_task.should_create_snapshot() && !opt.force_create {
-            return false;
-        }
-        let start = Instant::now();
-        self.create_snapshot_impl(opt);
-        let elapsed = start.elapsed().as_secs_f64();
-        self.snapshot_stats.update(elapsed);
-        true
-    }
-
     /// Notify mooncake snapshot as completed.
     pub fn mark_mooncake_snapshot_completed(&mut self) {
         assert!(self.mooncake_snapshot_ongoing);
@@ -1386,7 +1373,10 @@ impl MooncakeTable {
         if !self.next_snapshot_task.should_create_snapshot() && !opt.force_create {
             return false;
         }
+        let start = Instant::now();
         self.create_snapshot_impl(opt);
+        let elapsed = start.elapsed().as_secs_f64();
+        self.snapshot_stats.update_creation_latency(elapsed);
         true
     }
 
