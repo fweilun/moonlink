@@ -223,7 +223,6 @@ async fn create_table(
             ));
         }
     };
-    // let serialized_table_config = serde_json::to_string(&table_config).unwrap();
 
     // Create table in backend
     match state
