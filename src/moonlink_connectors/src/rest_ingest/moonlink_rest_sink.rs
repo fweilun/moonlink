@@ -40,7 +40,7 @@ impl RestSink {
             .insert(src_table_id, table_status)
             .is_some()
         {
-            return Err(Error::RestDuplicateTable(src_table_id));
+            return Err(Error::rest_duplicate_table(src_table_id));
         }
         Ok(())
     }
@@ -48,7 +48,7 @@ impl RestSink {
     /// Remove a table from the REST sink
     pub fn drop_table(&mut self, src_table_id: SrcTableId) -> Result<()> {
         if self.table_status.remove(&src_table_id).is_none() {
-            return Err(Error::RestNonExistentTable(src_table_id));
+            return Err(Error::rest_non_existent_table(src_table_id));
         }
         Ok(())
     }
@@ -62,7 +62,7 @@ impl RestSink {
         if let Some(table_status) = self.table_status.get(&src_table_id) {
             table_status.commit_lsn_tx.send(lsn).unwrap();
         } else {
-            return Err(crate::Error::RestApi(format!(
+            return Err(crate::Error::rest_api(format!(
                 "No table status found for src_table_id: {src_table_id}"
             )));
         }
@@ -238,11 +238,11 @@ impl RestSink {
     async fn send_table_event(&self, src_table_id: SrcTableId, event: TableEvent) -> Result<()> {
         if let Some(table_status) = self.table_status.get(&src_table_id) {
             table_status.event_sender.send(event).await.map_err(|e| {
-                crate::Error::RestApi(format!("Failed to send event to table {src_table_id}: {e}"))
+                crate::Error::rest_api(format!("Failed to send event to table {src_table_id}: {e}"))
             })?;
             Ok(())
         } else {
-            Err(crate::Error::RestApi(format!(
+            Err(crate::Error::rest_api(format!(
                 "No event sender found for src_table_id: {src_table_id}"
             )))
         }

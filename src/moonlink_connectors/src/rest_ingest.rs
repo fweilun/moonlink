@@ -97,10 +97,9 @@ impl RestApiConnection {
             wal_flush_lsn_rx,
         };
 
-        self.cmd_tx
-            .send(command)
-            .await
-            .map_err(|e| crate::Error::RestApi(format!("Failed to send add table command: {e}")))?;
+        self.cmd_tx.send(command).await.map_err(|e| {
+            crate::Error::rest_api(format!("Failed to send add table command: {e}"))
+        })?;
 
         Ok(())
     }
@@ -113,7 +112,7 @@ impl RestApiConnection {
         };
 
         self.cmd_tx.send(command).await.map_err(|e| {
-            crate::Error::RestApi(format!("Failed to send drop table command: {e}"))
+            crate::Error::rest_api(format!("Failed to send drop table command: {e}"))
         })?;
 
         Ok(())
@@ -133,7 +132,7 @@ impl RestApiConnection {
         self.cmd_tx
             .send(RestCommand::Shutdown)
             .await
-            .map_err(|e| crate::Error::RestApi(format!("Failed to send shutdown command: {e}")))?;
+            .map_err(|e| crate::Error::rest_api(format!("Failed to send shutdown command: {e}")))?;
         Ok(())
     }
 
