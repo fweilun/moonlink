@@ -213,12 +213,11 @@ async fn create_table(
     let serialized_table_config = match serde_json::to_string(&payload.table_config) {
         Ok(cfg) => cfg,
         Err(e) => {
-            error!("serialize table_config failed: {}", e);
             return Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {
-                    error: "table_creation_failed".to_string(),
-                    message: format!("Failed to create table: {e}"),
+                    error: "serialization_failed".to_string(),
+                    message: format!("Serialize table config failed: {e}"),
                 }),
             ));
         }
