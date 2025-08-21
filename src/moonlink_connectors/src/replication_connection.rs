@@ -336,7 +336,7 @@ impl<T: Clone + Eq + Hash + std::fmt::Display> ReplicationConnection<T> {
         let table_state = self
             .table_states
             .remove(&unique_table_id)
-            .ok_or(Error::TableNotFound(mooncake_table_id.to_string()))?;
+            .ok_or(Error::table_not_found(mooncake_table_id.to_string()))?;
 
         let table_name = &table_state.src_table_name;
 

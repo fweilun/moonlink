@@ -96,7 +96,7 @@ impl<T: Clone + Eq + Hash + std::fmt::Display> ReplicationManager<T> {
             if is_new_repl_conn {
                 assert!(self.connections.remove(src_uri).is_some());
             }
-            return Err(Error::ReplDuplicateTable(mooncake_table_id.to_string()));
+            return Err(Error::repl_duplicate_table(mooncake_table_id.to_string()));
         }
         assert!(self
             .table_info

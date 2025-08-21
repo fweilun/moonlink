@@ -44,8 +44,8 @@ pub enum Error {
     InvalidSourceType(ErrorStruct),
 
     // Table replication error: duplicate table.
-    #[error("Duplicate table added to replication: {0}")]
-    ReplDuplicateTable(String),
+    #[error("{0}")]
+    ReplDuplicateTable(ErrorStruct),
 
     // REST API error.
     #[error("{0}")]
@@ -62,7 +62,6 @@ pub enum Error {
     // REST source error: non-existent source table to remove.
     #[error("{0}")]
     RestNonExistentTable(ErrorStruct),
-    // "REST source error: non-existent source table to remove with table id "
 
     // REST source error: conversion from payload to moonlink row fails.
     #[error("{0}")]
@@ -76,6 +75,7 @@ pub enum Error {
 pub type Result<T> = result::Result<T, Error>;
 
 impl Error {
+    #[track_caller]
     pub fn rest_duplicate_table(id: SrcTableId) -> Self {
         Error::RestDuplicateTable(ErrorStruct {
             message: format!("REST source error: duplicate source table to add with table id {id}"),
@@ -85,38 +85,52 @@ impl Error {
         })
     }
 
+    #[track_caller]
+    pub fn table_not_found(table_name: String) -> Self {
+        Error::TableNotFound(ErrorStruct {
+            message: format!("Table {table_name} not found"),
+            status: ErrorStatus::Permanent,
+            source: None,
+            location: Some(Location::caller().to_string()),
+        })
+    }
+
+    #[track_caller]
+    pub fn invalid_source_type(desc: String) -> Self {
+        Error::InvalidSourceType(ErrorStruct {
+            message: format!("Invalid source type: {desc}"),
+            status: ErrorStatus::Permanent,
+            source: None,
+            location: Some(Location::caller().to_string()),
+        })
+    }
+
+    #[track_caller]
+    pub fn repl_duplicate_table(table_name: String) -> Self {
+        Error::ReplDuplicateTable(ErrorStruct {
+            message: format!("Duplicate table added to replication: {table_name}"),
+            status: ErrorStatus::Permanent,
+            source: None,
+            location: Some(Location::caller().to_string()),
+        })
+    }
+
+    #[track_caller]
+    pub fn rest_api(e: String) -> Self {
+        Error::RestApi(ErrorStruct {
+            message: format!("REST API error: {e}"),
+            status: ErrorStatus::Permanent,
+            source: None,
+            location: Some(Location::caller().to_string()),
+        })
+    }
+
+    #[track_caller]
     pub fn rest_non_existent_table(id: SrcTableId) -> Self {
         Error::RestNonExistentTable(ErrorStruct {
             message: format!(
                 "REST source error: non-existent source table to remove with table id {id}"
             ),
-            status: ErrorStatus::Permanent,
-            source: None,
-            location: Some(Location::caller().to_string()),
-        })
-    }
-
-    pub fn table_not_found(e: String) -> Self {
-        Error::TableNotFound(ErrorStruct {
-            message: format!("Table {e} not found"),
-            status: ErrorStatus::Permanent,
-            source: None,
-            location: Some(Location::caller().to_string()),
-        })
-    }
-
-    pub fn invalid_source_type(e: String) -> Self {
-        Error::InvalidSourceType(ErrorStruct {
-            message: format!("Invalid source type: {e}"),
-            status: ErrorStatus::Permanent,
-            source: None,
-            location: Some(Location::caller().to_string()),
-        })
-    }
-
-    pub fn rest_api(e: String) -> Self {
-        Error::RestApi(ErrorStruct {
-            message: format!("REST API error: {e}"),
             status: ErrorStatus::Permanent,
             source: None,
             location: Some(Location::caller().to_string()),
