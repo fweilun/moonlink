@@ -4292,6 +4292,7 @@ dependencies = [
 name = "moonlink_connectors"
 version = "0.0.1"
 dependencies = [
+ "anyhow",
  "arrow",
  "arrow-array",
  "arrow-schema",

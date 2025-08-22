@@ -3,6 +3,7 @@ use crate::pg_replicate::postgres_source::{
 };
 use crate::rest_ingest::rest_source::RestSourceError;
 use crate::rest_ingest::{json_converter, SrcTableId};
+use anyhow;
 use moonlink::Error as MoonlinkError;
 use moonlink_error::{io_error_utils, ErrorStatus, ErrorStruct};
 use serde::{Deserialize, Serialize};
@@ -116,11 +117,11 @@ impl Error {
     }
 
     #[track_caller]
-    pub fn rest_api(e: String) -> Self {
+    pub fn rest_api(err_msg: String, err: Option<Arc<anyhow::Error>>) -> Self {
         Error::RestApi(ErrorStruct {
-            message: format!("REST API error: {e}"),
+            message: format!("REST API error: {err_msg}"),
             status: ErrorStatus::Permanent,
-            source: None,
+            source: err,
             location: Some(Location::caller().to_string()),
         })
     }

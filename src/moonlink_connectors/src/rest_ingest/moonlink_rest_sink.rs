@@ -62,9 +62,10 @@ impl RestSink {
         if let Some(table_status) = self.table_status.get(&src_table_id) {
             table_status.commit_lsn_tx.send(lsn).unwrap();
         } else {
-            return Err(crate::Error::rest_api(format!(
-                "No table status found for src_table_id: {src_table_id}"
-            )));
+            return Err(crate::Error::rest_api(
+                format!("No table status found for src_table_id: {src_table_id}"),
+                None,
+            ));
         }
         self.replication_state.mark(lsn);
         Ok(())
@@ -238,13 +239,17 @@ impl RestSink {
     async fn send_table_event(&self, src_table_id: SrcTableId, event: TableEvent) -> Result<()> {
         if let Some(table_status) = self.table_status.get(&src_table_id) {
             table_status.event_sender.send(event).await.map_err(|e| {
-                crate::Error::rest_api(format!("Failed to send event to table {src_table_id}: {e}"))
+                crate::Error::rest_api(
+                    format!("Failed to send event to table {src_table_id}: {e}"),
+                    None,
+                )
             })?;
             Ok(())
         } else {
-            Err(crate::Error::rest_api(format!(
-                "No event sender found for src_table_id: {src_table_id}"
-            )))
+            Err(crate::Error::rest_api(
+                format!("No event sender found for src_table_id: {src_table_id}"),
+                None,
+            ))
         }
     }
 }

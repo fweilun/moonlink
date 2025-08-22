@@ -134,9 +134,10 @@ impl<T: Clone + Eq + Hash + std::fmt::Display> ReplicationManager<T> {
 
         // Fail if REST API connection doesn't exist
         if !self.connections.contains_key(src_uri) {
-            return Err(crate::Error::rest_api(format!(
-                "REST API connection '{src_uri}' not found. Initialize REST API first."
-            )));
+            return Err(crate::Error::rest_api(
+                format!("REST API connection '{src_uri}' not found. Initialize REST API first."),
+                None,
+            ));
         }
 
         let replication_connection = self.connections.get_mut(src_uri).unwrap();
