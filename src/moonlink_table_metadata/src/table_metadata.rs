@@ -1,20 +1,28 @@
-use crate::storage::mooncake_table::PuffinDeletionBlobAtRead;
-
 use bincode::enc::{write::Writer, Encode, Encoder};
 use bincode::error::EncodeError;
 use more_asserts as ma;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct TableMetadata {
-    pub(super) data_files: Vec<String>,
-    pub(super) puffin_files: Vec<String>,
-    /// Sorted deletion vector based on data file index.
-    pub(super) deletion_vectors: Vec<PuffinDeletionBlobAtRead>,
-    /// Sorted positional deletes on first element (data file id).
-    pub(super) position_deletes: Vec<(u32, u32)>,
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PuffinDeletionBlobAtRead {
+    /// Index of local data files.
+    pub data_file_index: u32,
+    /// Index of puffin filepaths.
+    pub puffin_file_index: u32,
+    pub start_offset: u32,
+    pub blob_size: u32,
 }
 
-impl Encode for TableMetadata {
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MooncakeTableMetadata {
+    pub data_files: Vec<String>,
+    pub puffin_files: Vec<String>,
+    /// Sorted deletion vector based on data file index.
+    pub deletion_vectors: Vec<PuffinDeletionBlobAtRead>,
+    /// Sorted positional deletes on first element (data file id).
+    pub position_deletes: Vec<(u32, u32)>,
+}
+
+impl Encode for MooncakeTableMetadata {
     fn encode<E: Encoder>(&self, encoder: &mut E) -> Result<(), EncodeError> {
         let writer = encoder.writer();
 
@@ -86,11 +94,9 @@ fn write_usize<W: Writer>(writer: &mut W, value: usize) -> Result<(), EncodeErro
     write_u32(writer, value)
 }
 
-#[cfg(any(test, feature = "test-utils"))]
-impl TableMetadata {
+// #[cfg(any(test, feature = "test-utils"))]
+impl MooncakeTableMetadata {
     pub fn decode(data: &[u8]) -> Self {
-        use crate::storage::mooncake_table::PuffinDeletionBlobAtRead;
-
         use std::convert::TryInto;
 
         let mut cursor = 0;
@@ -171,7 +177,7 @@ impl TableMetadata {
             cursor += puffin_file_offsets.last().unwrap();
         }
 
-        TableMetadata {
+        MooncakeTableMetadata {
             data_files,
             puffin_files,
             deletion_vectors: deletion_vectors_blobs,
@@ -213,7 +219,7 @@ mod tests {
     fn test_table_metadata_serde() {
         let (puffin_file_1, deletion_blob_1) = create_puffin_deletion_blob_1();
         let (puffin_file_2, deletion_blob_2) = create_puffin_deletion_blob_2();
-        let table_metadata = TableMetadata {
+        let table_metadata = MooncakeTableMetadata {
             data_files: vec![
                 "/tmp/iceberg_test/data/1.parquet".to_string(),
                 "/tmp/iceberg_test/data/2.parquet".to_string(),
@@ -225,7 +231,7 @@ mod tests {
         };
         let data = bincode::encode_to_vec(table_metadata.clone(), BINCODE_CONFIG).unwrap();
 
-        let decoded_metadata = TableMetadata::decode(data.as_slice());
+        let decoded_metadata = MooncakeTableMetadata::decode(data.as_slice());
         assert_eq!(table_metadata, decoded_metadata);
     }
 }

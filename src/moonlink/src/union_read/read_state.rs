@@ -3,9 +3,9 @@
 // Meant to be sent using either shared memory or network connection.
 //
 
-use super::table_metadata::TableMetadata;
-use crate::storage::{io_utils, PuffinDeletionBlobAtRead};
+use crate::storage::io_utils;
 use crate::NonEvictableHandle;
+use moonlink_table_metadata::{MooncakeTableMetadata, PuffinDeletionBlobAtRead};
 
 use bincode::config;
 use tracing::Instrument;
@@ -103,7 +103,7 @@ impl ReadState {
             .map(|path| read_state_filepath_remap(path))
             .collect::<Vec<_>>();
 
-        let metadata = TableMetadata {
+        let metadata = MooncakeTableMetadata {
             data_files: remapped_data_files,
             puffin_files: remapped_puffin_files,
             deletion_vectors: deletion_vectors_at_read,
@@ -130,7 +130,7 @@ pub fn decode_read_state_for_testing(
     Vec<PuffinDeletionBlobAtRead>,
     Vec<(u32, u32)>,
 ) {
-    let metadata = TableMetadata::decode(&read_state.data);
+    let metadata = MooncakeTableMetadata::decode(&read_state.data);
     (
         metadata.data_files,
         metadata.puffin_files,

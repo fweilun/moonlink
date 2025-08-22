@@ -6,9 +6,9 @@ use crate::storage::mooncake_table::snapshot_read_output::{
 };
 use crate::storage::mooncake_table::table_status::TableSnapshotStatus;
 use crate::storage::storage_utils::RecordLocation;
-use crate::storage::PuffinDeletionBlobAtRead;
 use crate::NonEvictableHandle;
 use arrow_schema::Schema;
+use moonlink_table_metadata::PuffinDeletionBlobAtRead;
 use parquet::arrow::AsyncArrowWriter;
 use parquet::basic::{Compression, Encoding};
 use parquet::file::properties::WriterProperties;

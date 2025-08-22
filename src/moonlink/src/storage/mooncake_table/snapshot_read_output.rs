@@ -1,11 +1,11 @@
 use crate::storage::cache::object_storage::base_cache::CacheTrait;
 use crate::storage::filesystem::accessor::base_filesystem_accessor::BaseFileSystemAccess;
 use crate::storage::storage_utils::TableUniqueFileId;
-use crate::storage::PuffinDeletionBlobAtRead;
 use crate::table_notify::EvictedFiles;
 use crate::table_notify::TableEvent;
 use crate::ReadStateFilepathRemap;
 use crate::{NonEvictableHandle, ReadState, Result};
+use moonlink_table_metadata::PuffinDeletionBlobAtRead;
 
 use std::sync::Arc;
 
