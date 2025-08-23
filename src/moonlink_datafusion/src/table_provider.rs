@@ -18,7 +18,8 @@ use datafusion::logical_expr::{Expr, TableProviderFilterPushDown, TableType};
 use datafusion::physical_plan::metrics::ExecutionPlanMetricsSet;
 use datafusion::physical_plan::ExecutionPlan;
 use moonlink_rpc::{get_table_schema, scan_table_begin, scan_table_end};
-use moonlink_table_metadata::{MooncakeTableMetadata, PuffinDeletionBlobAtRead};
+use moonlink_table_metadata::table_metadata::PositionDelete;
+use moonlink_table_metadata::{DeletionVector, MooncakeTableMetadata};
 use object_store::ObjectStore;
 use parquet::arrow::arrow_reader::{RowSelection, RowSelector};
 use parquet::arrow::async_reader::AsyncFileReader;
@@ -100,33 +101,33 @@ impl TableProvider for MooncakeTableProvider {
         for (data_file_number, data_file) in data_files.iter().enumerate() {
             let mut deleted_rows = RoaringTreemap::new();
             if deletion_vector_number < deletion_vectors.len() {
-                let PuffinDeletionBlobAtRead {
-                    data_file_index: _data_file_number,
-                    puffin_file_index,
-                    start_offset,
-                    blob_size,
+                let DeletionVector {
+                    data_file_number: _data_file_number,
+                    puffin_file_number,
+                    offset,
+                    size,
                 } = deletion_vectors[deletion_vector_number];
                 if data_file_number == _data_file_number as usize {
                     deletion_vector_number += 1;
                     let mut puffin_file =
-                        File::open(&puffin_files[puffin_file_index as usize]).await?;
+                        File::open(&puffin_files[puffin_file_number as usize]).await?;
                     // | 4-byte length | 4-byte magic | buffer | 4-byte CRC-32 |
-                    puffin_file
-                        .seek(SeekFrom::Start(start_offset as u64 + 8))
-                        .await?;
-                    let mut buffer = vec![0u8; blob_size as usize - 12];
+                    puffin_file.seek(SeekFrom::Start(offset as u64 + 8)).await?;
+                    let mut buffer = vec![0u8; size as usize - 12];
                     puffin_file.read_exact(&mut buffer).await?;
                     deleted_rows = RoaringTreemap::deserialize_from(buffer.as_slice())?;
                 }
             }
             while position_delete_number < position_deletes.len() {
-                let (_data_file_number, data_file_row_number) =
-                    position_deletes[position_delete_number];
-                if data_file_number < _data_file_number as usize {
+                let PositionDelete {
+                    data_file_number: _data_file_number,
+                    data_file_row_number,
+                } = &position_deletes[position_delete_number];
+                if data_file_number < *_data_file_number as usize {
                     break;
                 }
                 position_delete_number += 1;
-                deleted_rows.insert(data_file_row_number as u64);
+                deleted_rows.insert(*data_file_row_number as u64);
             }
 
             let file = File::open(data_file).await?;

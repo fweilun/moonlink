@@ -4273,6 +4273,7 @@ dependencies = [
  "moonlink_connectors",
  "moonlink_error",
  "moonlink_metadata_store",
+ "moonlink_table_metadata",
  "more-asserts",
  "native-tls",
  "nix 0.30.1",
@@ -4425,6 +4426,7 @@ version = "0.0.1"
 dependencies = [
  "bincode",
  "more-asserts",
+ "serde",
 ]
 
 [[package]]

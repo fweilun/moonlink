@@ -1,25 +1,28 @@
 use bincode::enc::{write::Writer, Encode, Encoder};
 use bincode::error::EncodeError;
 use more_asserts as ma;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PuffinDeletionBlobAtRead {
-    /// Index of local data files.
-    pub data_file_index: u32,
-    /// Index of puffin filepaths.
-    pub puffin_file_index: u32,
-    pub start_offset: u32,
-    pub blob_size: u32,
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct DeletionVector {
+    pub data_file_number: u32,
+    pub puffin_file_number: u32,
+    pub offset: u32,
+    pub size: u32,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
+pub struct PositionDelete {
+    pub data_file_number: u32,
+    pub data_file_row_number: u32,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct MooncakeTableMetadata {
     pub data_files: Vec<String>,
     pub puffin_files: Vec<String>,
-    /// Sorted deletion vector based on data file index.
-    pub deletion_vectors: Vec<PuffinDeletionBlobAtRead>,
-    /// Sorted positional deletes on first element (data file id).
-    pub position_deletes: Vec<(u32, u32)>,
+    pub deletion_vectors: Vec<DeletionVector>,
+    pub position_deletes: Vec<PositionDelete>,
 }
 
 impl Encode for MooncakeTableMetadata {
@@ -46,29 +49,32 @@ impl Encode for MooncakeTableMetadata {
         write_usize(writer, offset)?;
 
         // Used to check deletion vector ordering.
-        let mut prev_data_file_index = 0;
+        let mut prev_data_file_number = 0;
         // Write deletion vector puffin blob information.
         write_usize(writer, self.deletion_vectors.len())?;
         for deletion_vector in &self.deletion_vectors {
-            ma::assert_ge!(deletion_vector.data_file_index, prev_data_file_index);
-            prev_data_file_index = deletion_vector.data_file_index;
+            ma::assert_ge!(deletion_vector.data_file_number, prev_data_file_number);
+            prev_data_file_number = deletion_vector.data_file_number;
 
-            write_u32(writer, deletion_vector.data_file_index)?;
-            write_u32(writer, deletion_vector.puffin_file_index)?;
-            write_u32(writer, deletion_vector.start_offset)?;
-            write_u32(writer, deletion_vector.blob_size)?;
+            write_u32(writer, deletion_vector.data_file_number)?;
+            write_u32(writer, deletion_vector.puffin_file_number)?;
+            write_u32(writer, deletion_vector.offset)?;
+            write_u32(writer, deletion_vector.size)?;
         }
 
         // Used to check positional deletes ordering.
-        let mut prev_position_delete_data_file_index = 0;
+        let mut prev_position_delete_data_file_number = 0;
         // Write positional deletion records.
         write_usize(writer, self.position_deletes.len())?;
         for position_delete in &self.position_deletes {
-            ma::assert_ge!(position_delete.0, prev_position_delete_data_file_index);
-            prev_position_delete_data_file_index = position_delete.0;
+            ma::assert_ge!(
+                position_delete.data_file_number,
+                prev_position_delete_data_file_number
+            );
+            prev_position_delete_data_file_number = position_delete.data_file_number;
 
-            write_u32(writer, position_delete.0)?;
-            write_u32(writer, position_delete.1)?;
+            write_u32(writer, position_delete.data_file_number)?;
+            write_u32(writer, position_delete.data_file_row_number)?;
         }
 
         // Write data filepaths.
@@ -94,7 +100,6 @@ fn write_usize<W: Writer>(writer: &mut W, value: usize) -> Result<(), EncodeErro
     write_u32(writer, value)
 }
 
-// #[cfg(any(test, feature = "test-utils"))]
 impl MooncakeTableMetadata {
     pub fn decode(data: &[u8]) -> Self {
         use std::convert::TryInto;
@@ -131,15 +136,15 @@ impl MooncakeTableMetadata {
         let puffin_blob_len = read_usize(data, &mut cursor);
         let mut deletion_vectors_blobs = Vec::with_capacity(puffin_blob_len);
         for _ in 0..puffin_blob_len {
-            let data_file_index = read_u32(data, &mut cursor);
-            let puffin_file_index = read_u32(data, &mut cursor);
-            let start_offset = read_u32(data, &mut cursor);
-            let blob_size = read_u32(data, &mut cursor);
-            deletion_vectors_blobs.push(PuffinDeletionBlobAtRead {
-                data_file_index,
-                puffin_file_index,
-                start_offset,
-                blob_size,
+            let data_file_number = read_u32(data, &mut cursor);
+            let puffin_file_number = read_u32(data, &mut cursor);
+            let offset = read_u32(data, &mut cursor);
+            let size = read_u32(data, &mut cursor);
+            deletion_vectors_blobs.push(DeletionVector {
+                data_file_number,
+                puffin_file_number,
+                offset,
+                size,
             });
         }
 
@@ -147,9 +152,12 @@ impl MooncakeTableMetadata {
         let position_deletes_len = read_usize(data, &mut cursor);
         let mut position_deletes = Vec::with_capacity(position_deletes_len);
         for _ in 0..position_deletes_len {
-            let data_file_index = read_u32(data, &mut cursor);
-            let row_index = read_u32(data, &mut cursor);
-            position_deletes.push((data_file_index, row_index));
+            let data_file_number = read_u32(data, &mut cursor);
+            let data_file_row_number = read_u32(data, &mut cursor);
+            position_deletes.push(PositionDelete {
+                data_file_number,
+                data_file_row_number,
+            });
         }
 
         // Read data filepaths.
@@ -194,22 +202,22 @@ mod tests {
     const BINCODE_CONFIG: config::Configuration = config::standard();
 
     /// Util function to create a puffin deletion blob.
-    fn create_puffin_deletion_blob_1() -> (String /*puffin filepath*/, PuffinDeletionBlobAtRead) {
-        let deletion_blob = PuffinDeletionBlobAtRead {
-            data_file_index: 0,
-            puffin_file_index: 0,
-            start_offset: 4,
-            blob_size: 10,
+    fn create_puffin_deletion_blob_1() -> (String /*puffin filepath*/, DeletionVector) {
+        let deletion_blob = DeletionVector {
+            data_file_number: 0,
+            puffin_file_number: 0,
+            offset: 4,
+            size: 10,
         };
         let puffin_filepath = "/tmp/iceberg_test/1-puffin.bin".to_string();
         (puffin_filepath, deletion_blob)
     }
-    fn create_puffin_deletion_blob_2() -> (String /*puffin filepath*/, PuffinDeletionBlobAtRead) {
-        let deletion_blob = PuffinDeletionBlobAtRead {
-            data_file_index: 0,
-            puffin_file_index: 1,
-            start_offset: 4,
-            blob_size: 20,
+    fn create_puffin_deletion_blob_2() -> (String /*puffin filepath*/, DeletionVector) {
+        let deletion_blob = DeletionVector {
+            data_file_number: 0,
+            puffin_file_number: 1,
+            offset: 4,
+            size: 20,
         };
         let puffin_filepath = "/tmp/iceberg_test/2-puffin.bin".to_string();
         (puffin_filepath, deletion_blob)
@@ -227,7 +235,10 @@ mod tests {
             ],
             puffin_files: vec![puffin_file_1, puffin_file_2],
             deletion_vectors: vec![deletion_blob_1, deletion_blob_2],
-            position_deletes: vec![(2, 2)],
+            position_deletes: vec![PositionDelete {
+                data_file_number: 2,
+                data_file_row_number: 2,
+            }],
         };
         let data = bincode::encode_to_vec(table_metadata.clone(), BINCODE_CONFIG).unwrap();
 
