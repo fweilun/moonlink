@@ -132,7 +132,8 @@ pub fn decode_read_state_for_testing(
     Vec<DeletionVector>,
     Vec<PositionDelete>,
 ) {
-    let metadata = MooncakeTableMetadata::decode(&read_state.data);
+    let (metadata, _): (MooncakeTableMetadata, usize) =
+        bincode::decode_from_slice(&read_state.data, config::standard()).unwrap();
     (
         metadata.data_files,
         metadata.puffin_files,
