@@ -1,5 +1,8 @@
+use bincode::de::{read::Reader, Decode, Decoder};
 use bincode::enc::{write::Writer, Encode, Encoder};
+use bincode::error::DecodeError;
 use bincode::error::EncodeError;
+
 use more_asserts as ma;
 use serde::{Deserialize, Serialize};
 
@@ -100,47 +103,42 @@ fn write_usize<W: Writer>(writer: &mut W, value: usize) -> Result<(), EncodeErro
     write_u32(writer, value)
 }
 
-impl MooncakeTableMetadata {
-    pub fn decode(data: &[u8]) -> Self {
-        use std::convert::TryInto;
+fn read_u32<R: Reader>(reader: &mut R) -> Result<u32, DecodeError> {
+    let mut bytes = [0; 4];
+    reader.read(&mut bytes)?;
+    Ok(u32::from_ne_bytes(bytes))
+}
 
-        let mut cursor = 0;
+fn read_usize<R: Reader>(reader: &mut R) -> Result<usize, DecodeError> {
+    read_u32(reader).map(|value| value as usize)
+}
 
-        fn read_u32(data: &[u8], cursor: &mut usize) -> u32 {
-            let val = u32::from_ne_bytes(data[*cursor..*cursor + 4].try_into().unwrap());
-            *cursor += 4;
-            val
-        }
+impl<Context> Decode<Context> for MooncakeTableMetadata {
+    fn decode<D: Decoder<Context = Context>>(decoder: &mut D) -> Result<Self, DecodeError> {
+        let mut reader = decoder.reader();
 
-        fn read_usize(data: &[u8], cursor: &mut usize) -> usize {
-            read_u32(data, cursor) as usize
-        }
-
-        // Read data filepath offsets.
-        let data_files_len = read_usize(data, &mut cursor);
+        let data_files_len = read_usize(&mut reader)?;
         let mut data_file_offsets = Vec::with_capacity(data_files_len + 1);
         for _ in 0..=data_files_len {
-            let data_file_offset = read_usize(data, &mut cursor);
+            let data_file_offset = read_usize(&mut reader)?;
             data_file_offsets.push(data_file_offset);
         }
 
-        // Read puffin filepath offsets.
-        let puffin_files_len = read_usize(data, &mut cursor);
+        let puffin_files_len = read_usize(&mut reader)?;
         let mut puffin_file_offsets = Vec::with_capacity(puffin_files_len + 1);
         for _ in 0..=puffin_files_len {
-            let puffin_file_offset = read_usize(data, &mut cursor);
+            let puffin_file_offset = read_usize(&mut reader)?;
             puffin_file_offsets.push(puffin_file_offset);
         }
 
-        // Read deletion vector blobs.
-        let puffin_blob_len = read_usize(data, &mut cursor);
-        let mut deletion_vectors_blobs = Vec::with_capacity(puffin_blob_len);
-        for _ in 0..puffin_blob_len {
-            let data_file_number = read_u32(data, &mut cursor);
-            let puffin_file_number = read_u32(data, &mut cursor);
-            let offset = read_u32(data, &mut cursor);
-            let size = read_u32(data, &mut cursor);
-            deletion_vectors_blobs.push(DeletionVector {
+        let deletion_vectors_len = read_usize(&mut reader)?;
+        let mut deletion_vectors = Vec::with_capacity(deletion_vectors_len);
+        for _ in 0..deletion_vectors_len {
+            let data_file_number = read_u32(&mut reader)?;
+            let puffin_file_number = read_u32(&mut reader)?;
+            let offset = read_u32(&mut reader)?;
+            let size = read_u32(&mut reader)?;
+            deletion_vectors.push(DeletionVector {
                 data_file_number,
                 puffin_file_number,
                 offset,
@@ -148,49 +146,41 @@ impl MooncakeTableMetadata {
             });
         }
 
-        // Read positional delete records.
-        let position_deletes_len = read_usize(data, &mut cursor);
+        let position_deletes_len = read_usize(&mut reader)?;
         let mut position_deletes = Vec::with_capacity(position_deletes_len);
         for _ in 0..position_deletes_len {
-            let data_file_number = read_u32(data, &mut cursor);
-            let data_file_row_number = read_u32(data, &mut cursor);
+            let data_file_number = read_u32(&mut reader)?;
+            let data_file_row_number = read_u32(&mut reader)?;
             position_deletes.push(PositionDelete {
                 data_file_number,
                 data_file_row_number,
             });
         }
 
-        // Read data filepaths.
         let mut data_files = Vec::with_capacity(data_files_len);
         for i in 0..data_files_len {
-            let start = data_file_offsets[i];
-            let end = data_file_offsets[i + 1];
-            let s = String::from_utf8(data[cursor + start..cursor + end].to_vec()).unwrap();
-            data_files.push(s);
-        }
-        if data_files_len > 0 {
-            cursor += data_file_offsets.last().unwrap();
+            let len = data_file_offsets[i + 1] - data_file_offsets[i];
+            let mut bytes = vec![0u8; len];
+            reader.read(&mut bytes)?;
+            let data_file = String::from_utf8(bytes).unwrap();
+            data_files.push(data_file);
         }
 
-        // Read puffin filepaths.
         let mut puffin_files = Vec::with_capacity(puffin_files_len);
         for i in 0..puffin_files_len {
-            let start = puffin_file_offsets[i];
-            let end = puffin_file_offsets[i + 1];
-            let cur_puffin_filepath =
-                String::from_utf8(data[cursor + start..cursor + end].to_vec()).unwrap();
-            puffin_files.push(cur_puffin_filepath);
-        }
-        if data_files_len > 0 {
-            cursor += puffin_file_offsets.last().unwrap();
+            let len = puffin_file_offsets[i + 1] - puffin_file_offsets[i];
+            let mut bytes = vec![0u8; len];
+            reader.read(&mut bytes)?;
+            let puffin_file = String::from_utf8(bytes).unwrap();
+            puffin_files.push(puffin_file);
         }
 
-        MooncakeTableMetadata {
+        Ok(Self {
             data_files,
             puffin_files,
-            deletion_vectors: deletion_vectors_blobs,
+            deletion_vectors,
             position_deletes,
-        }
+        })
     }
 }
 
@@ -242,7 +232,8 @@ mod tests {
         };
         let data = bincode::encode_to_vec(table_metadata.clone(), BINCODE_CONFIG).unwrap();
 
-        let decoded_metadata = MooncakeTableMetadata::decode(data.as_slice());
-        assert_eq!(table_metadata, decoded_metadata);
+        let decoded_metadata: (MooncakeTableMetadata, usize) =
+            bincode::decode_from_slice(&data, config::standard()).unwrap();
+        assert_eq!(table_metadata, decoded_metadata.0);
     }
 }

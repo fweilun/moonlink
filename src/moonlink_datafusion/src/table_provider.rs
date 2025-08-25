@@ -2,6 +2,7 @@ use crate::error::Result;
 use arrow::datatypes::SchemaRef;
 use arrow_ipc::reader::StreamReader;
 use async_trait::async_trait;
+use bincode::config;
 use datafusion::catalog::memory::DataSourceExec;
 use datafusion::catalog::{Session, TableProvider};
 use datafusion::common::{DFSchema, DataFusionError};
@@ -217,7 +218,8 @@ impl MooncakeTableScan {
         lsn: u64,
     ) -> Result<Self> {
         let metadata = scan_table_begin(&mut stream, schema.clone(), table.clone(), lsn).await?;
-        let metadata = MooncakeTableMetadata::decode(&metadata);
+        let metadata: MooncakeTableMetadata =
+            bincode::decode_from_slice(&metadata, config::standard())?.0;
         Ok(Self {
             stream: Some(stream),
             schema,
