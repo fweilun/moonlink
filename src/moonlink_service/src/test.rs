@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::rest_api::ListTablesResponse;
+use crate::rest_api::{FileUploadResponse, ListTablesResponse};
 use arrow_array::{Int32Array, RecordBatch, StringArray};
 use bytes::Bytes;
 use moonlink::decode_serialized_read_state_for_testing;
@@ -147,8 +147,8 @@ async fn list_tables(client: &reqwest::Client) -> Vec<TableStatus> {
         response.status().is_success(),
         "Response status is {response:?}"
     );
-    let payload: ListTablesResponse = response.json().await.unwrap();
-    payload.tables
+    let response: ListTablesResponse = response.json().await.unwrap();
+    response.tables
 }
 
 /// Util function to load all record batches inside of the given [`path`].
@@ -232,6 +232,7 @@ async fn test_moonlink_standalone_data_ingestion() {
     // Ingest some data.
     let insert_payload = json!({
         "operation": "insert",
+        "request_mode": "async",
         "data": {
             "id": 1,
             "name": "Alice Johnson",
@@ -313,6 +314,7 @@ async fn test_moonlink_standalone_file_upload() {
     let parquet_file = generate_parquet_file(&get_moonlink_backend_dir()).await;
     let file_upload_payload = json!({
         "operation": "upload",
+        "request_mode": "sync",
         "files": [parquet_file],
         "storage_config": {
             "fs": {
@@ -333,6 +335,8 @@ async fn test_moonlink_standalone_file_upload() {
         response.status().is_success(),
         "Response status is {response:?}"
     );
+    let response: FileUploadResponse = response.json().await.unwrap();
+    assert_eq!(response.lsn, Some(1));
 
     // Scan table and get data file and puffin files back.
     let mut moonlink_stream = TcpStream::connect(MOONLINK_ADDR).await.unwrap();
@@ -401,6 +405,7 @@ async fn test_moonlink_standalone_file_insert() {
     let file_upload_payload = json!({
         "operation": "insert",
         "files": [parquet_file],
+        "request_mode": "async",
         "storage_config": {
             "fs": {
                 "root_directory": get_moonlink_backend_dir(),
@@ -681,6 +686,7 @@ async fn test_non_existent_table() {
     // Test invalid operation to upload a file.
     let file_upload_payload = json!({
         "operation": "upload",
+        "request_mode": "async",
         "files": ["parquet_file"],
         "storage_config": {
             "fs": {

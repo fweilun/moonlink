@@ -8,9 +8,11 @@ use std::{
 use futures::{ready, Stream};
 use pin_project_lite::pin_project;
 use postgres_native_tls::TlsStream;
+use postgres_replication::protocol::{LogicalReplicationMessage, ReplicationMessage};
 use postgres_replication::LogicalReplicationStream;
 use thiserror::Error;
-use tokio_postgres::{types::PgLsn, Connection, CopyOutStream, Socket};
+use tokio_postgres::Error;
+use tokio_postgres::{tls::NoTlsStream, types::PgLsn, Connection, CopyOutStream, Socket};
 use tracing::{debug, error, info_span, warn, Instrument};
 
 use crate::pg_replicate::{
@@ -248,6 +250,7 @@ impl PostgresSource {
             stream,
             table_schemas: HashMap::new(),
             postgres_epoch,
+            message_scratch: Vec::new(),
         })
     }
 }
@@ -309,6 +312,7 @@ pin_project! {
         stream: LogicalReplicationStream,
         table_schemas: HashMap<SrcTableId, TableSchema>,
         postgres_epoch: SystemTime,
+        message_scratch: Vec<Result<ReplicationMessage<LogicalReplicationMessage>, Error>>,
     }
 }
 
@@ -355,6 +359,36 @@ impl CdcStream {
     pub fn remove_table_schema(self: Pin<&mut Self>, src_table_id: SrcTableId) {
         let this = self.project();
         assert!(this.table_schemas.remove(&src_table_id).is_some());
+    }
+
+    pub async fn next_batch_msgs(
+        self: core::pin::Pin<&mut Self>,
+        out: &mut Vec<Result<CdcEvent, CdcStreamError>>,
+        max: usize,
+    ) -> usize {
+        let mut this = self.project();
+        let mut messages = &mut *this.message_scratch;
+        messages.clear();
+        messages.reserve(max);
+
+        let n = this
+            .stream
+            .as_mut()
+            .next_batch_msgs(&mut messages, max)
+            .await;
+
+        out.clear();
+        out.reserve(n);
+        for f in messages.drain(..n) {
+            match f {
+                Ok(msg) => match CdcEventConverter::try_from(msg, &this.table_schemas) {
+                    Ok(evt) => out.push(Ok(evt)),
+                    Err(e) => out.push(Err(e.into())), // into CdcStreamError
+                },
+                Err(e) => out.push(Err(CdcStreamError::from(e))),
+            }
+        }
+        n
     }
 }
 

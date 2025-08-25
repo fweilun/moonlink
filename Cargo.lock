@@ -4295,6 +4295,7 @@ dependencies = [
 name = "moonlink_connectors"
 version = "0.0.1"
 dependencies = [
+ "anyhow",
  "arrow",
  "arrow-array",
  "arrow-schema",
@@ -4308,6 +4309,7 @@ dependencies = [
  "iceberg",
  "moonlink",
  "moonlink_error",
+ "more-asserts",
  "native-tls",
  "num-traits",
  "parquet",
@@ -5132,7 +5134,7 @@ dependencies = [
 [[package]]
 name = "postgres-native-tls"
 version = "0.5.0"
-source = "git+https://github.com/Mooncake-Labs/rust-postgres.git?rev=4fda9c1bece3b93359ca1eb2779458fc1c080eae#4fda9c1bece3b93359ca1eb2779458fc1c080eae"
+source = "git+https://github.com/Mooncake-Labs/rust-postgres.git?rev=a7398c75b5cfd62fc016306a71d83306ad4ddf35#a7398c75b5cfd62fc016306a71d83306ad4ddf35"
 dependencies = [
  "native-tls",
  "tokio",
@@ -5143,7 +5145,7 @@ dependencies = [
 [[package]]
 name = "postgres-protocol"
 version = "0.6.7"
-source = "git+https://github.com/Mooncake-Labs/rust-postgres.git?rev=4fda9c1bece3b93359ca1eb2779458fc1c080eae#4fda9c1bece3b93359ca1eb2779458fc1c080eae"
+source = "git+https://github.com/Mooncake-Labs/rust-postgres.git?rev=a7398c75b5cfd62fc016306a71d83306ad4ddf35#a7398c75b5cfd62fc016306a71d83306ad4ddf35"
 dependencies = [
  "base64 0.22.1",
  "byteorder",
@@ -5160,7 +5162,7 @@ dependencies = [
 [[package]]
 name = "postgres-replication"
 version = "0.6.7"
-source = "git+https://github.com/Mooncake-Labs/rust-postgres.git?rev=4fda9c1bece3b93359ca1eb2779458fc1c080eae#4fda9c1bece3b93359ca1eb2779458fc1c080eae"
+source = "git+https://github.com/Mooncake-Labs/rust-postgres.git?rev=a7398c75b5cfd62fc016306a71d83306ad4ddf35#a7398c75b5cfd62fc016306a71d83306ad4ddf35"
 dependencies = [
  "byteorder",
  "bytes",
@@ -5175,7 +5177,7 @@ dependencies = [
 [[package]]
 name = "postgres-types"
 version = "0.2.7"
-source = "git+https://github.com/Mooncake-Labs/rust-postgres.git?rev=4fda9c1bece3b93359ca1eb2779458fc1c080eae#4fda9c1bece3b93359ca1eb2779458fc1c080eae"
+source = "git+https://github.com/Mooncake-Labs/rust-postgres.git?rev=a7398c75b5cfd62fc016306a71d83306ad4ddf35#a7398c75b5cfd62fc016306a71d83306ad4ddf35"
 dependencies = [
  "bytes",
  "fallible-iterator",
@@ -7096,7 +7098,7 @@ dependencies = [
 [[package]]
 name = "tokio-postgres"
 version = "0.7.11"
-source = "git+https://github.com/Mooncake-Labs/rust-postgres.git?rev=4fda9c1bece3b93359ca1eb2779458fc1c080eae#4fda9c1bece3b93359ca1eb2779458fc1c080eae"
+source = "git+https://github.com/Mooncake-Labs/rust-postgres.git?rev=a7398c75b5cfd62fc016306a71d83306ad4ddf35#a7398c75b5cfd62fc016306a71d83306ad4ddf35"
 dependencies = [
  "async-trait",
  "byteorder",

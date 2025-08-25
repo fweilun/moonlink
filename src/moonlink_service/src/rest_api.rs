@@ -7,15 +7,13 @@ use axum::{
 };
 use moonlink::StorageConfig;
 use moonlink_backend::{table_config::TableConfig, table_status::TableStatus};
-use moonlink_backend::{
-    EventRequest, FileEventOperation, FileEventRequest, RowEventOperation, RowEventRequest,
-    REST_API_URI,
-};
+use moonlink_backend::{EventRequest, FileEventOperation, RowEventOperation};
+use moonlink_backend::{FileEventRequest, RowEventRequest, REST_API_URI};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::SystemTime;
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot};
 use tower_http::cors::{Any, CorsLayer};
 use tracing::{debug, error, info};
 
@@ -36,6 +34,16 @@ impl ApiState {
 /// Error message
 /// ====================
 ///
+/// Request mode.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum RequestMode {
+    /// Only issues request, but not block wait its completion.
+    Async,
+    /// Block wait request completion.
+    Sync,
+}
+
 /// Error response structure
 #[derive(Debug, Serialize)]
 pub struct ErrorResponse {
@@ -65,10 +73,11 @@ pub struct FieldSchema {
 }
 
 /// Response structure for table creation
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CreateTableResponse {
     pub database: String,
     pub table: String,
+    pub lsn: u64,
 }
 
 /// ====================
@@ -83,7 +92,7 @@ pub struct DropTableRequest {
 }
 
 /// Response structure for table drop.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct DropTableResponse {}
 
 /// ====================
@@ -101,24 +110,28 @@ pub struct ListTablesResponse {
 /// ====================
 ///
 /// Request structure for data ingestion
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct IngestRequest {
     pub operation: String,
     pub data: serde_json::Value,
+    /// Whether to enable synchronous mode.
+    pub request_mode: RequestMode,
 }
 
 /// Response structure for data ingestion
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct IngestResponse {
     pub table: String,
     pub operation: String,
+    /// Assigned for synchronous mode.
+    pub lsn: Option<u64>,
 }
 
 /// ====================
 /// File upload
 /// ====================
 ///
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct FileUploadRequest {
     /// Ingestion operation.
     pub operation: String,
@@ -126,12 +139,14 @@ pub struct FileUploadRequest {
     pub files: Vec<String>,
     /// Storage configuration to access files.
     pub storage_config: StorageConfig,
+    /// Whether to enable synchronous mode.
+    pub request_mode: RequestMode,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct FileUploadResponse {
-    pub status: String,
-    pub message: String,
+    /// Assigned for synchronous mode.
+    pub lsn: Option<u64>,
 }
 
 /// ====================
@@ -139,7 +154,7 @@ pub struct FileUploadResponse {
 /// ====================
 ///
 /// Health check response
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct HealthResponse {
     pub service: String,
     pub status: String,
@@ -292,6 +307,8 @@ async fn create_table(
             Ok(Json(CreateTableResponse {
                 database: payload.database.clone(),
                 table,
+                // A new table is always with LSN 1.
+                lsn: 1,
             }))
         }
         Err(e) => {
@@ -368,11 +385,17 @@ async fn upload_files(
     };
 
     // Create REST request.
+    let (tx, mut rx) = mpsc::channel(1);
     let file_event_request = FileEventRequest {
         src_table_name: src_table_name.clone(),
         operation,
         storage_config: payload.storage_config,
         files: payload.files,
+        tx: if payload.request_mode == RequestMode::Sync {
+            Some(tx)
+        } else {
+            None
+        },
     };
     let rest_event_request = EventRequest::FileRequest(file_event_request);
     state
@@ -389,10 +412,13 @@ async fn upload_files(
                 }),
             )
         })?;
-    Ok(Json(FileUploadResponse {
-        status: "success".to_string(),
-        message: "File queued for ingestion".to_string(),
-    }))
+
+    let lsn: Option<u64> = if payload.request_mode == RequestMode::Sync {
+        rx.recv().await
+    } else {
+        None
+    };
+    Ok(Json(FileUploadResponse { lsn }))
 }
 
 /// Data ingestion endpoint
@@ -426,11 +452,17 @@ async fn ingest_data(
     };
 
     // Create REST request
+    let (tx, mut rx) = mpsc::channel(1);
     let row_event_request = RowEventRequest {
         src_table_name: src_table_name.clone(),
         operation,
         payload: payload.data,
         timestamp: SystemTime::now(),
+        tx: if payload.request_mode == RequestMode::Sync {
+            Some(tx)
+        } else {
+            None
+        },
     };
     let rest_event_request = EventRequest::RowRequest(row_event_request);
 
@@ -448,9 +480,16 @@ async fn ingest_data(
                 }),
             )
         })?;
+
+    let lsn: Option<u64> = if payload.request_mode == RequestMode::Sync {
+        rx.recv().await
+    } else {
+        None
+    };
     Ok(Json(IngestResponse {
         table: src_table_name,
         operation: payload.operation,
+        lsn,
     }))
 }
 

@@ -204,19 +204,29 @@ pub(crate) fn create_test_table_metadata_with_config(
     local_table_directory: String,
     mooncake_table_config: MooncakeTableConfig,
 ) -> Arc<MooncakeTableMetadata> {
+    let identity = if mooncake_table_config.append_only {
+        RowIdentity::None
+    } else {
+        RowIdentity::FullRow
+    };
     Arc::new(MooncakeTableMetadata {
         name: ICEBERG_TEST_TABLE.to_string(),
         table_id: 0,
         schema: create_test_arrow_schema(),
         config: mooncake_table_config,
         path: std::path::PathBuf::from(local_table_directory),
-        identity: RowIdentity::FullRow,
+        identity,
     })
 }
 
 /// Test util function to get random row identity.
 #[cfg(feature = "chaos-test")]
-pub(crate) fn get_random_identity(random_seed: u64) -> RowIdentity {
+pub(crate) fn get_random_identity(random_seed: u64, append_only: bool) -> RowIdentity {
+    // If append only, no random choice.
+    if append_only {
+        return RowIdentity::None;
+    }
+
     use rand::{seq::IndexedRandom, SeedableRng};
     let mut rng = rand::rngs::StdRng::seed_from_u64(random_seed);
 
@@ -281,6 +291,7 @@ pub(crate) fn create_test_table_metadata_disable_flush(
     let mut config = MooncakeTableConfig::new(local_table_directory.clone());
     config.mem_slice_size = usize::MAX; // Disable flush at commit if not force flush.
     config.disk_slice_writer_config = disk_slice_write_config;
+    config.append_only = identity == RowIdentity::None;
     create_test_table_metadata_with_config_and_identity(local_table_directory, config, identity)
 }
 
@@ -300,6 +311,7 @@ pub(crate) fn create_test_table_metadata_with_index_merge_disable_flush(
     config.disk_slice_writer_config = disk_slice_write_config;
     config.file_index_config = file_index_config;
     config.mem_slice_size = usize::MAX; // Disable flush at commit if not force flush.
+    config.append_only = identity == RowIdentity::None;
     create_test_table_metadata_with_config_and_identity(local_table_directory, config, identity)
 }
 
@@ -320,6 +332,7 @@ pub(crate) fn create_test_table_metadata_with_data_compaction_disable_flush(
     config.disk_slice_writer_config = disk_slice_write_config;
     config.data_compaction_config = data_compaction_config;
     config.mem_slice_size = usize::MAX; // Disable flush at commit if not force flush.
+    config.append_only = identity == RowIdentity::None;
     create_test_table_metadata_with_config_and_identity(local_table_directory, config, identity)
 }
 
