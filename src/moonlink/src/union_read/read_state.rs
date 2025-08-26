@@ -5,9 +5,7 @@
 
 use crate::storage::io_utils;
 use crate::NonEvictableHandle;
-use moonlink_table_metadata::table_metadata::{
-    DeletionVector, MooncakeTableMetadata, PositionDelete,
-};
+use moonlink_table_metadata::{DeletionVector, MooncakeTableMetadata, PositionDelete};
 
 use bincode::config;
 use tracing::Instrument;
