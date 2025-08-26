@@ -14,6 +14,7 @@ pub struct RestCatalog {
 }
 
 impl RestCatalog {
+    #[allow(dead_code)]
     pub async fn new(
         builder: IcebergRestCatalogBuilder,
         name: impl Into<String>,
