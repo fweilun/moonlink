@@ -2,7 +2,6 @@ use bincode::de::{read::Reader, Decode, Decoder};
 use bincode::enc::{write::Writer, Encode, Encoder};
 use bincode::error::DecodeError;
 use bincode::error::EncodeError;
-
 use more_asserts as ma;
 use serde::{Deserialize, Serialize};
 
@@ -94,25 +93,6 @@ impl Encode for MooncakeTableMetadata {
     }
 }
 
-fn write_u32<W: Writer>(writer: &mut W, value: u32) -> Result<(), EncodeError> {
-    writer.write(&value.to_ne_bytes())
-}
-
-fn write_usize<W: Writer>(writer: &mut W, value: usize) -> Result<(), EncodeError> {
-    let value = u32::try_from(value).map_err(|_| EncodeError::Other("out of range"))?;
-    write_u32(writer, value)
-}
-
-fn read_u32<R: Reader>(reader: &mut R) -> Result<u32, DecodeError> {
-    let mut bytes = [0; 4];
-    reader.read(&mut bytes)?;
-    Ok(u32::from_ne_bytes(bytes))
-}
-
-fn read_usize<R: Reader>(reader: &mut R) -> Result<usize, DecodeError> {
-    read_u32(reader).map(|value| value as usize)
-}
-
 impl<Context> Decode<Context> for MooncakeTableMetadata {
     fn decode<D: Decoder<Context = Context>>(decoder: &mut D) -> Result<Self, DecodeError> {
         let mut reader = decoder.reader();
@@ -182,6 +162,25 @@ impl<Context> Decode<Context> for MooncakeTableMetadata {
             position_deletes,
         })
     }
+}
+
+fn write_u32<W: Writer>(writer: &mut W, value: u32) -> Result<(), EncodeError> {
+    writer.write(&value.to_ne_bytes())
+}
+
+fn write_usize<W: Writer>(writer: &mut W, value: usize) -> Result<(), EncodeError> {
+    let value = u32::try_from(value).map_err(|_| EncodeError::Other("out of range"))?;
+    write_u32(writer, value)
+}
+
+fn read_u32<R: Reader>(reader: &mut R) -> Result<u32, DecodeError> {
+    let mut bytes = [0; 4];
+    reader.read(&mut bytes)?;
+    Ok(u32::from_ne_bytes(bytes))
+}
+
+fn read_usize<R: Reader>(reader: &mut R) -> Result<usize, DecodeError> {
+    read_u32(reader).map(|value| value as usize)
 }
 
 #[cfg(test)]

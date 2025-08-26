@@ -387,7 +387,7 @@ fn parse_deletion_vector_blob(blob_data: &[u8]) -> Vec<u64> {
 /// Helper function to apply position deletes to data files and return the remaining IDs
 fn apply_position_deletes_to_files(
     data_files: &[String],
-    position_deletes: &[PositionDelete], // (file_index, row_index)
+    position_deletes: &[PositionDelete],
 ) -> HashSet<i64> {
     // Group deletes by file index
     let mut deletes_by_file: std::collections::HashMap<u32, HashSet<u32>> =

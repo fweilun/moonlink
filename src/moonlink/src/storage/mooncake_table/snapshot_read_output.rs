@@ -5,8 +5,7 @@ use crate::table_notify::EvictedFiles;
 use crate::table_notify::TableEvent;
 use crate::ReadStateFilepathRemap;
 use crate::{NonEvictableHandle, ReadState, Result};
-use moonlink_table_metadata::table_metadata::PositionDelete;
-use moonlink_table_metadata::DeletionVector;
+use moonlink_table_metadata::{DeletionVector, PositionDelete};
 
 use std::sync::Arc;
 
