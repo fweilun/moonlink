@@ -29,6 +29,7 @@ storage-gcs = [
     "hmac",
     "sha1",
     "reqwest",
+    "serial_test",
 ]
 
 catalog-rest = []
@@ -63,6 +64,7 @@ iceberg-catalog-rest = { workspace = true }
 itertools = { workspace = true }
 lru = { workspace = true }
 memmap2 = "0.9"
+mockito = { workspace = true }
 moka = { workspace = true }
 moonlink_error = { path = "../moonlink_error" }
 moonlink_table_metadata = { path = "../moonlink_table_metadata" }
@@ -77,6 +79,7 @@ reqwest = { version = "0.12", features = ["json"], optional = true }
 roaring = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+serial_test = { workspace = true, optional = true }
 sha1 = { version = "0.10", optional = true }
 smallvec = { workspace = true }
 thiserror = { workspace = true }
