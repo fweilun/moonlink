@@ -79,6 +79,7 @@ volumes:
   fake-gcs-data:
   shared-nginx:
     name: moonlink-shared-nginx
+  
 
 networks:
   shared_network:
