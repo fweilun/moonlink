@@ -108,21 +108,19 @@ impl Catalog for RestCatalog {
     }
 }
 
+#[cfg(feature = "storage-gcs")]
 #[cfg(test)]
 mod tests {
+    use super::*;
     use iceberg::spec::{NestedField, PrimitiveType, Schema, Type};
     use reqwest::Client;
-
-    use super::*;
     const REST_CATALOG_PROP_URI: &str = "uri";
 
-    #[cfg(feature = "storage-gcs")]
     async fn ensure_namespace(catalog: &IcebergRestCatalog, ns: &str) {
         let ns_ident = NamespaceIdent::from_vec(vec![ns.to_string()]).unwrap();
         let _ = catalog.create_namespace(&ns_ident, HashMap::new()).await;
     }
 
-    #[cfg(feature = "storage-gcs")]
     #[tokio::test]
     async fn test_create_table() {
         let builder = IcebergRestCatalogBuilder::default().with_client(Client::new());
@@ -180,7 +178,6 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "storage-gcs")]
     #[tokio::test]
     async fn test_drop_table() {
         let builder = IcebergRestCatalogBuilder::default().with_client(Client::new());
@@ -213,7 +210,6 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "storage-gcs")]
     #[tokio::test]
     async fn test_load_table() {
         let builder = IcebergRestCatalogBuilder::default().with_client(Client::new());
@@ -244,7 +240,6 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "storage-gcs")]
     #[tokio::test]
     async fn test_table_exists() {
         let builder = IcebergRestCatalogBuilder::default().with_client(Client::new());
