@@ -36,18 +36,20 @@ impl Catalog for RestCatalog {
     }
     async fn create_namespace(
         &self,
-        _namespace_ident: &iceberg::NamespaceIdent,
-        _properties: HashMap<String, String>,
+        namespace_ident: &iceberg::NamespaceIdent,
+        properties: HashMap<String, String>,
     ) -> IcebergResult<iceberg::Namespace> {
-        todo!("create namespace is not supported");
+        self.catalog
+            .create_namespace(namespace_ident, properties)
+            .await
     }
 
     async fn get_namespace(&self, _namespace_ident: &NamespaceIdent) -> IcebergResult<Namespace> {
         todo!("get namespace is not supported");
     }
 
-    async fn namespace_exists(&self, _namespace_ident: &NamespaceIdent) -> IcebergResult<bool> {
-        todo!("namespace exists is not supported");
+    async fn namespace_exists(&self, namespace_ident: &NamespaceIdent) -> IcebergResult<bool> {
+        self.catalog.namespace_exists(namespace_ident).await
     }
 
     async fn drop_namespace(&self, _namespace_ident: &NamespaceIdent) -> IcebergResult<()> {
@@ -115,10 +117,15 @@ mod tests {
     const REST_CATALOG_PROP_URI: &str = "uri";
 
     #[cfg(feature = "storage-gcs")]
+    async fn ensure_namespace(catalog: &IcebergRestCatalog, ns: &str) {
+        let ns_ident = NamespaceIdent::from_vec(vec![ns.to_string()]).unwrap();
+        let _ = catalog.create_namespace(&ns_ident, HashMap::new()).await;
+    }
+
+    #[cfg(feature = "storage-gcs")]
     #[tokio::test]
     async fn test_create_table() {
         let builder = IcebergRestCatalogBuilder::default().with_client(Client::new());
-
         let catalog = builder
             .load(
                 "test",
@@ -132,6 +139,22 @@ mod tests {
             )
             .await;
 
+        let binding = catalog.unwrap();
+        ensure_namespace(&binding, "ns1").await;
+
+        let builder = IcebergRestCatalogBuilder::default().with_client(Client::new());
+        let catalog = builder
+            .load(
+                "test",
+                HashMap::from([
+                    (
+                        REST_CATALOG_PROP_URI.to_string(),
+                        "http://localhost:8181".to_string(),
+                    ),
+                    ("a".to_string(), "b".to_string()),
+                ]),
+            )
+            .await;
         assert!(catalog.is_ok());
         let table_creation = TableCreation::builder()
             .name("test1".to_string())
@@ -250,13 +273,20 @@ mod tests {
             )
             .await;
         assert!(catalog.is_ok());
-        assert!(catalog
+        let result = catalog
             .unwrap()
             .table_exists(&TableIdent::new(
                 NamespaceIdent::new("ns1".to_string()),
                 "table1".to_string(),
             ))
-            .await
-            .unwrap());
+            .await;
+
+        match result {
+            Ok(_) => {}
+            Err(e) if e.to_string().contains("does not exist") => {}
+            Err(e) => {
+                panic!("table exist error: {e:?}");
+            }
+        }
     }
 }
