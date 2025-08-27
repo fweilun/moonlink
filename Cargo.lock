@@ -3530,69 +3530,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "iceberg"
-version = "0.6.0"
-source = "git+https://github.com/apache/iceberg-rust.git?rev=7cde26a7d793905bbbe4d7264b215ca9dc7e9567#7cde26a7d793905bbbe4d7264b215ca9dc7e9567"
-dependencies = [
- "anyhow",
- "apache-avro",
- "array-init",
- "arrow-arith",
- "arrow-array",
- "arrow-buffer",
- "arrow-cast",
- "arrow-ord",
- "arrow-schema",
- "arrow-select",
- "arrow-string",
- "as-any",
- "async-trait",
- "backon",
- "base64 0.22.1",
- "bimap",
- "bytes",
- "chrono",
- "derive_builder",
- "expect-test",
- "fnv",
- "futures",
- "itertools 0.13.0",
- "moka",
- "murmur3",
- "num-bigint",
- "once_cell",
- "opendal",
- "ordered-float 4.6.0",
- "parquet",
- "rand 0.8.5",
- "reqsign",
- "reqwest",
- "roaring",
- "rust_decimal",
- "serde",
- "serde_bytes",
- "serde_derive",
- "serde_json",
- "serde_repr",
- "serde_with",
- "strum 0.27.2",
- "thrift",
- "tokio",
- "typed-builder 0.20.1",
- "url",
- "uuid",
- "zstd",
-]
-
-[[package]]
 name = "iceberg-catalog-rest"
 version = "0.6.0"
-source = "git+https://github.com/apache/iceberg-rust.git?rev=7cde26a7d793905bbbe4d7264b215ca9dc7e9567#7cde26a7d793905bbbe4d7264b215ca9dc7e9567"
+source = "git+https://github.com/apache/iceberg-rust.git?rev=4aacad756250a5a1bbc44842ea4b608e3213b641#4aacad756250a5a1bbc44842ea4b608e3213b641"
 dependencies = [
  "async-trait",
  "chrono",
  "http 1.3.1",
- "iceberg 0.6.0 (git+https://github.com/apache/iceberg-rust.git?rev=7cde26a7d793905bbbe4d7264b215ca9dc7e9567)",
+ "iceberg",
  "itertools 0.13.0",
  "reqwest",
  "serde",
@@ -4355,7 +4300,7 @@ dependencies = [
  "futures",
  "hashbrown 0.15.5",
  "hmac",
- "iceberg 0.6.0 (git+https://github.com/apache/iceberg-rust.git?rev=4aacad756250a5a1bbc44842ea4b608e3213b641)",
+ "iceberg",
  "iceberg-catalog-rest",
  "itertools 0.14.0",
  "lru",
@@ -4441,7 +4386,7 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "futures",
- "iceberg 0.6.0 (git+https://github.com/apache/iceberg-rust.git?rev=4aacad756250a5a1bbc44842ea4b608e3213b641)",
+ "iceberg",
  "moonlink",
  "moonlink_error",
  "more-asserts",
