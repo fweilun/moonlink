@@ -60,7 +60,6 @@ futures = { workspace = true }
 hashbrown = { workspace = true }
 hmac = { version = "0.12", optional = true }
 iceberg = { workspace = true }
-iceberg-catalog-rest = { workspace = true }
 itertools = { workspace = true }
 lru = { workspace = true }
 memmap2 = "0.9"
@@ -92,6 +91,7 @@ uuid = { workspace = true }
 
 [dev-dependencies]
 criterion = "0.5"
+iceberg-catalog-rest = { git = "https://github.com/apache/iceberg-rust.git", rev = "4aacad756250a5a1bbc44842ea4b608e3213b641" }
 mockall = "0.13"
 pico-args = "0.5"
 pprof = { version = "0.15", features = ["flamegraph", "criterion"] }
