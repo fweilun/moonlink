@@ -43,9 +43,9 @@ services:
       - "9001:9001"  # Web UI
 
   iceberg-rest:
-    image: tabulario/iceberg-rest:latest
+    image: apache/iceberg-rest-fixture:latest
     ports:
-      - 8181:8181
+      - "8181:8181"
 
   fake-gcs:
     image: fsouza/fake-gcs-server:latest
@@ -79,7 +79,6 @@ volumes:
   fake-gcs-data:
   shared-nginx:
     name: moonlink-shared-nginx
-  
 
 networks:
   shared_network:
