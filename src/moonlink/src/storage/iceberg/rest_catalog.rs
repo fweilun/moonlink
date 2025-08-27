@@ -129,13 +129,10 @@ mod tests {
         let catalog = builder
             .load(
                 "test",
-                HashMap::from([
-                    (
-                        REST_CATALOG_PROP_URI.to_string(),
-                        "http://localhost:8181".to_string(),
-                    ),
-                    ("a".to_string(), "b".to_string()),
-                ]),
+                HashMap::from([(
+                    REST_CATALOG_PROP_URI.to_string(),
+                    "http://localhost:8181".to_string(),
+                )]),
             )
             .await;
 
@@ -146,13 +143,10 @@ mod tests {
         let catalog = builder
             .load(
                 "test",
-                HashMap::from([
-                    (
-                        REST_CATALOG_PROP_URI.to_string(),
-                        "http://localhost:8181".to_string(),
-                    ),
-                    ("a".to_string(), "b".to_string()),
-                ]),
+                HashMap::from([(
+                    REST_CATALOG_PROP_URI.to_string(),
+                    "http://localhost:8181".to_string(),
+                )]),
             )
             .await;
         assert!(catalog.is_ok());
@@ -193,13 +187,10 @@ mod tests {
         let catalog = builder
             .load(
                 "test",
-                HashMap::from([
-                    (
-                        REST_CATALOG_PROP_URI.to_string(),
-                        "http://localhost:8181".to_string(),
-                    ),
-                    ("a".to_string(), "b".to_string()),
-                ]),
+                HashMap::from([(
+                    REST_CATALOG_PROP_URI.to_string(),
+                    "http://localhost:8181".to_string(),
+                )]),
             )
             .await;
         assert!(catalog.is_ok());
@@ -229,13 +220,10 @@ mod tests {
         let catalog = builder
             .load(
                 "test",
-                HashMap::from([
-                    (
-                        REST_CATALOG_PROP_URI.to_string(),
-                        "http://localhost:8181".to_string(),
-                    ),
-                    ("a".to_string(), "b".to_string()),
-                ]),
+                HashMap::from([(
+                    REST_CATALOG_PROP_URI.to_string(),
+                    "http://localhost:8181".to_string(),
+                )]),
             )
             .await;
 
@@ -263,13 +251,10 @@ mod tests {
         let catalog = builder
             .load(
                 "test",
-                HashMap::from([
-                    (
-                        REST_CATALOG_PROP_URI.to_string(),
-                        "http://localhost:8181".to_string(),
-                    ),
-                    ("a".to_string(), "b".to_string()),
-                ]),
+                HashMap::from([(
+                    REST_CATALOG_PROP_URI.to_string(),
+                    "http://localhost:8181".to_string(),
+                )]),
             )
             .await;
         assert!(catalog.is_ok());
