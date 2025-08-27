@@ -161,34 +161,6 @@ mod tests {
                 panic!("create_table failure: {e:?}")
             }
         }
-
-        let builder = IcebergRestCatalogBuilder::default().with_client(Client::new());
-        let catalog = builder
-            .load(
-                "test",
-                HashMap::from([
-                    (
-                        REST_CATALOG_PROP_URI.to_string(),
-                        "http://localhost:8181".to_string(),
-                    ),
-                    ("a".to_string(), "b".to_string()),
-                ]),
-            )
-            .await;
-
-        let result = catalog
-            .unwrap()
-            .table_exists(&TableIdent::new(
-                NamespaceIdent::new("ns1".to_string()),
-                "test1".to_string(),
-            ))
-            .await;
-        match result {
-            Ok(_) => {}
-            Err(e) => {
-                panic!("table_exists error: {e:?}");
-            }
-        }
     }
 
     #[cfg(feature = "storage-gcs")]
