@@ -90,7 +90,7 @@ jobs:
             -e STORAGE_DIR=/data \
             fsouza/fake-gcs-server:latest \
             -scheme http -port 4443
-
+      
       # ─────────────── Add hostnames to /etc/hosts ──────────────────────────
       - name: Add gcs.local to /etc/hosts
         run: |
@@ -106,6 +106,26 @@ jobs:
               break
             fi
             echo "Waiting for Fake GCS..."
+            sleep 2
+          done
+      
+      # ─────────────────────── Start iceberg-rest ──────────────────────────
+      - name: Start iceberg-rest
+        run: |
+          docker run -d \
+            --name apache/iceberg-rest-fixture \
+            -p 8181:8181
+
+      # ───────────────────── Wait for iceberg-rest to be ready ───────────────────
+      - name: Wait for Iceberg-rest ready
+        timeout-minutes: 2
+        run: |
+          for i in {1..10}; do
+            if curl -sS http://localhost:8181/v1/config; then
+              echo "Iceberg-rest is ready!"
+              break
+            fi
+            echo "Waiting for Iceberg-rust..."
             sleep 2
           done
 
