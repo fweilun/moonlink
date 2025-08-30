@@ -22,9 +22,9 @@ pub struct RestCatalogConfig {
     /// - oauth2-server-uri: Custom OAuth2 server URI. Defaults to: [uri, PATH_V1:"v1", "oauth", "tokens"].join("/")
     /// - token:           Static authentication token used by the client for sending requests.
     /// - credentials:     Client credentials used to fetch a new token.
-    ///                 - None: No credentials provided.
-    ///                 - Some(None, client_secret): Only client_secret is provided.
-    ///                 - Some(Some(client_id), client_secret): Both client_id and client_secret are provided.
+    ///     - None: No credentials provided.
+    ///     - Some(None, client_secret): Only client_secret is provided.
+    ///     - Some(Some(client_id), client_secret): Both client_id and client_secret are provided.
     #[serde(rename = "props")]
     #[serde(default)]
     pub props: HashMap<String, String>,

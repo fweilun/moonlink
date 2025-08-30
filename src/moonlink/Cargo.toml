@@ -17,6 +17,7 @@ storage-s3 = [
     "base64",
     "hmac",
     "sha1",
+    "reqwest",
 ]
 
 # iceberg gcs io doesn't support HMAC key, so have to leverage S3 sdk.
@@ -28,6 +29,7 @@ storage-gcs = [
     "base64",
     "hmac",
     "sha1",
+    "reqwest",
 ]
 
 catalog-rest = []
