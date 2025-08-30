@@ -71,6 +71,7 @@ mod file_catalog_test_utils;
 #[cfg(test)]
 mod file_catalog_test;
 
+#[cfg(feature = "rest-catalog")]
 #[cfg(test)]
 mod rest_catalog_test;
 

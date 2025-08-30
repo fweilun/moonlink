@@ -4,7 +4,10 @@ use iceberg::TableCreation;
 use rand::{distr::Alphanumeric, Rng};
 use std::collections::HashMap;
 
-pub(crate) fn random_string() -> String {
+const DEFAULT_REST_CATALOG_NAME: str = "test";
+const DEFAULT_REST_CATALOG_URI: str = "http://localhost:8181";
+
+pub(crate) fn get_random_string() -> String {
     let rng = rand::rng();
     rng.sample_iter(&Alphanumeric)
         .take(10)
@@ -14,8 +17,8 @@ pub(crate) fn random_string() -> String {
 
 pub(crate) fn default_rest_catalog_config() -> RestCatalogConfig {
     RestCatalogConfig {
-        name: "test".to_string(),
-        uri: "http://localhost:8181".to_string(),
+        name: DEFAULT_REST_CATALOG_NAME.to_string(),
+        uri: DEFAULT_REST_CATALOG_URI.to_string(),
         warehouse: None,
         props: HashMap::new(),
         client: None,

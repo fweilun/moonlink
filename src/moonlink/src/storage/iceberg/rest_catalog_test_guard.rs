@@ -12,7 +12,9 @@ pub(crate) struct RestCatalogTestGuard {
 impl RestCatalogTestGuard {
     pub(crate) async fn new(namespace: String, table: Option<String>) -> Result<Self> {
         let config = default_rest_catalog_config();
-        let catalog = RestCatalog::new(config).await;
+        let catalog = RestCatalog::new(config)
+            .await
+            .expect("Catalog creation fail");
         let ns_ident = NamespaceIdent::new(namespace);
         catalog.create_namespace(&ns_ident, HashMap::new()).await?;
         let table_ident = if let Some(t) = table {
@@ -38,15 +40,13 @@ impl Drop for RestCatalogTestGuard {
         let config = default_rest_catalog_config();
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async move {
-                let catalog = RestCatalog::new(config).await;
+                let catalog = RestCatalog::new(config)
+                    .await
+                    .expect("Catalog creation fail");
                 if let Some(t) = table {
-                    if let Err(e) = catalog.drop_table(&t).await {
-                        tracing::warn!(?e, "drop(table) failed in Drop");
-                    }
+                    catalog.drop_table(&t).await.unwrap();
                 }
-                if let Err(e) = catalog.drop_namespace(&self.namespace).await {
-                    tracing::warn!(?e, "drop(namespace) failed in Drop");
-                }
+                catalog.drop_namespace(&self.namespace).await.unwrap();
             });
         })
     }
