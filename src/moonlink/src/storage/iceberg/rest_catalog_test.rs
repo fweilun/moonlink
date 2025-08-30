@@ -11,23 +11,19 @@ mod tests {
         let table = get_random_string();
         let _guard = RestCatalogTestGuard::new(namespace.clone(), None)
             .await
-            .expect(&format!(
-                "Rest catalog test guard creation fail, namespace={}",
-                namespace
-            ));
+            .unwrap_or_else(|_| {
+                panic!("Rest catalog test guard creation fail, namespace={namespace}")
+            });
         let config = default_rest_catalog_config();
         let catalog = RestCatalog::new(config)
             .await
             .expect("Catalog creation fail");
         let namespace = NamespaceIdent::new(namespace);
-        let table_creation = default_table_creation(table);
+        let table_creation = default_table_creation(table.clone());
         catalog
             .create_table(&namespace, table_creation)
             .await
-            .expect(&format!(
-                "Table creation fail, namespace={} table=",
-                namespace, table
-            ));
+            .unwrap_or_else(|_| panic!("Table creation fail, namespace={namespace} table={table}"));
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -36,27 +32,30 @@ mod tests {
         let table = get_random_string();
         let guard = RestCatalogTestGuard::new(namespace.clone(), Some(table.clone()))
             .await
-            .expect(&format!(
-                "Rest catalog test guard creation fail, namespace={}",
-                namespace
-            ));
+            .unwrap_or_else(|_| {
+                panic!("Rest catalog test guard creation fail, namespace={namespace}")
+            });
         let config = default_rest_catalog_config();
         let catalog = RestCatalog::new(config)
             .await
             .expect("Catalog creation fail");
         let table_ident = guard.table.clone().unwrap();
-        assert!(catalog.table_exists(&table_ident).await.expect(&format!(
-            "Table exist function fail, namespace={} table=",
-            namespace, table
-        )));
-        catalog.drop_table(&table_ident).await.expect(&format!(
-            "Table creation fail, namespace={} table=",
-            namespace, table
-        ));
-        assert!(!catalog.table_exists(&table_ident).await.expect(&format!(
-            "Table exist function fail, namespace={} table=",
-            namespace, table
-        )));
+        assert!(catalog
+            .table_exists(&table_ident)
+            .await
+            .unwrap_or_else(|_| panic!(
+                "Table exist function fail, namespace={namespace} table={table}"
+            )));
+        catalog
+            .drop_table(&table_ident)
+            .await
+            .unwrap_or_else(|_| panic!("Table creation fail, namespace={namespace} table={table}"));
+        assert!(!catalog
+            .table_exists(&table_ident)
+            .await
+            .unwrap_or_else(|_| panic!(
+                "Table exist function fail, namespace={namespace} table={table}"
+            )));
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -65,19 +64,20 @@ mod tests {
         let table = get_random_string();
         let guard = RestCatalogTestGuard::new(namespace.clone(), Some(table.clone()))
             .await
-            .expect(&format!(
-                "Rest catalog test guard creation fail, namespace={}",
-                namespace
-            ));
+            .unwrap_or_else(|_| {
+                panic!("Rest catalog test guard creation fail, namespace={namespace}")
+            });
         let config = default_rest_catalog_config();
         let catalog = RestCatalog::new(config)
             .await
             .expect("Catalog creation fail");
         let table_ident = guard.table.clone().unwrap();
-        assert!(catalog.table_exists(&table_ident).await.expect(&format!(
-            "Table exist function fail, namespace={} table=",
-            namespace, table
-        )));
+        assert!(catalog
+            .table_exists(&table_ident)
+            .await
+            .unwrap_or_else(|_| panic!(
+                "Table exist function fail, namespace={namespace} table={table}"
+            )));
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -86,19 +86,17 @@ mod tests {
         let table = get_random_string();
         let guard = RestCatalogTestGuard::new(namespace.clone(), Some(table.clone()))
             .await
-            .expect(&format!(
-                "Rest catalog test guard creation fail, namespace={}",
-                namespace
-            ));
+            .unwrap_or_else(|_| {
+                panic!("Rest catalog test guard creation fail, namespace={namespace}")
+            });
         let config = default_rest_catalog_config();
         let catalog = RestCatalog::new(config)
             .await
             .expect("Catalog creation fail");
         let table_ident = guard.table.clone().unwrap();
-        let result = catalog.load_table(&table_ident).await.expect(&format!(
-            "Load table function fail, namespace={} table=",
-            namespace, table
-        ));
+        let result = catalog.load_table(&table_ident).await.unwrap_or_else(|_| {
+            panic!("Load table function fail, namespace={namespace} table={table}")
+        });
         let result_table_ident = result.identifier().clone();
         assert!(table_ident == result_table_ident);
     }

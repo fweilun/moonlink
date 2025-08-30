@@ -8,7 +8,6 @@ use iceberg_catalog_rest::{
     RestCatalog as IcebergRestCatalog, RestCatalogBuilder as IcebergRestCatalogBuilder,
     REST_CATALOG_PROP_URI, REST_CATALOG_PROP_WAREHOUSE,
 };
-use reqwest::Client;
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -18,18 +17,13 @@ pub struct RestCatalog {
 
 impl RestCatalog {
     pub async fn new(mut config: RestCatalogConfig) -> Result<Self> {
-        let mut builder = IcebergRestCatalogBuilder::default();
-        if let Some(c) = config.client {
-            builder = builder.with_client(c);
-        }
+        let builder = IcebergRestCatalogBuilder::default();
         config
             .props
             .insert(REST_CATALOG_PROP_URI.to_string(), config.uri);
-        if let Some(warehouse) = config.warehouse {
-            config
-                .props
-                .insert(REST_CATALOG_PROP_WAREHOUSE.to_string(), warehouse);
-        }
+        config
+            .props
+            .insert(REST_CATALOG_PROP_WAREHOUSE.to_string(), config.warehouse);
         let catalog = builder.load(config.name, config.props).await?;
         Ok(Self { catalog })
     }

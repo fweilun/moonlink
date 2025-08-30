@@ -12,10 +12,9 @@ pub struct RestCatalogConfig {
     #[serde(default)]
     pub uri: String,
 
-    /// Base warehouse path; if `path` is provided, the final path becomes `warehouse/path`.
     #[serde(rename = "warehouse")]
     #[serde(default)]
-    pub warehouse: Option<String>,
+    pub warehouse: String,
 
     /// Optional configuration properties:
     ///
@@ -29,11 +28,6 @@ pub struct RestCatalogConfig {
     #[serde(rename = "props")]
     #[serde(default)]
     pub props: HashMap<String, String>,
-
-    /// If None, a default Client will be created and used.
-    #[serde(rename = "client")]
-    #[serde(default)]
-    pub client: Option<Client>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

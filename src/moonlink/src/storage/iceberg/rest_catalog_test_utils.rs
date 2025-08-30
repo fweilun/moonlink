@@ -1,11 +1,12 @@
-use crate::storage::iceberg::rest_catalog::RestCatalogConfig;
+use crate::storage::iceberg::iceberg_table_config::RestCatalogConfig;
 use iceberg::spec::{NestedField, PrimitiveType, Schema, Type};
 use iceberg::TableCreation;
 use rand::{distr::Alphanumeric, Rng};
 use std::collections::HashMap;
 
-const DEFAULT_REST_CATALOG_NAME: str = "test";
-const DEFAULT_REST_CATALOG_URI: str = "http://localhost:8181";
+const DEFAULT_REST_CATALOG_NAME: &str = "test";
+const DEFAULT_REST_CATALOG_URI: &str = "http://localhost:8181";
+const DEFAULT_WAREHOUSE_PATH: &str = "warehouse";
 
 pub(crate) fn get_random_string() -> String {
     let rng = rand::rng();
@@ -19,9 +20,8 @@ pub(crate) fn default_rest_catalog_config() -> RestCatalogConfig {
     RestCatalogConfig {
         name: DEFAULT_REST_CATALOG_NAME.to_string(),
         uri: DEFAULT_REST_CATALOG_URI.to_string(),
-        warehouse: None,
+        warehouse: DEFAULT_WAREHOUSE_PATH.to_string(),
         props: HashMap::new(),
-        client: None,
     }
 }
 
