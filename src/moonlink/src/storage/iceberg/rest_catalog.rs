@@ -5,24 +5,43 @@ use iceberg::Result as IcebergResult;
 use iceberg::{Catalog, Namespace, NamespaceIdent, TableCommit, TableCreation, TableIdent};
 use iceberg_catalog_rest::{
     RestCatalog as IcebergRestCatalog, RestCatalogBuilder as IcebergRestCatalogBuilder,
+    REST_CATALOG_PROP_URI, REST_CATALOG_PROP_WAREHOUSE,
 };
+use reqwest::Client;
 use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct RestCatalog {
-    catalog: IcebergRestCatalog,
+    pub(crate) catalog: IcebergRestCatalog,
+}
+
+#[derive(Debug, Default)]
+pub struct RestCatalogConfig {
+    // catalog name
+    pub name: String,
+    pub rest_catalog_prop_uri: String,
+    pub rest_catalog_prop_warehouse: Option<String>,
+    pub props: HashMap<String, String>,
+    pub client: Option<Client>,
 }
 
 impl RestCatalog {
-    #[allow(dead_code)]
-    pub async fn new(
-        builder: IcebergRestCatalogBuilder,
-        name: impl Into<String>,
-        props: HashMap<String, String>,
-    ) -> Self {
-        Self {
-            catalog: builder.load(name, props).await.unwrap(),
+    pub async fn new(mut config: RestCatalogConfig) -> Self {
+        let mut builder = IcebergRestCatalogBuilder::default();
+        if let Some(c) = config.client {
+            builder = builder.with_client(c);
         }
+        config.props.insert(
+            REST_CATALOG_PROP_URI.to_string(),
+            config.rest_catalog_prop_uri,
+        );
+        if let Some(warehouse) = config.rest_catalog_prop_warehouse {
+            config
+                .props
+                .insert(REST_CATALOG_PROP_WAREHOUSE.to_string(), warehouse);
+        }
+        let catalog = builder.load(config.name, config.props).await.unwrap();
+        Self { catalog }
     }
 }
 
@@ -52,8 +71,8 @@ impl Catalog for RestCatalog {
         self.catalog.namespace_exists(namespace_ident).await
     }
 
-    async fn drop_namespace(&self, _namespace_ident: &NamespaceIdent) -> IcebergResult<()> {
-        todo!("drop namespace is not supported");
+    async fn drop_namespace(&self, namespace_ident: &NamespaceIdent) -> IcebergResult<()> {
+        self.catalog.drop_namespace(namespace_ident).await
     }
 
     async fn list_tables(
@@ -108,7 +127,7 @@ impl Catalog for RestCatalog {
     }
 }
 
-#[cfg(feature = "storage-gcs")]
+#[cfg(feature = "rest-catalog")]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -123,7 +142,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_table() {
-        let builder = IcebergRestCatalogBuilder::default().with_client(Client::new());
+        let builder = IcebergRestCatalogBuilder::default();
         let catalog = builder
             .load(
                 "test",
