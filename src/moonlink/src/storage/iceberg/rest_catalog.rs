@@ -1,3 +1,4 @@
+use crate::storage::iceberg::iceberg_table_config::RestCatalogConfig;
 use async_trait::async_trait;
 use iceberg::table::Table;
 use iceberg::CatalogBuilder;
@@ -13,27 +14,6 @@ use std::collections::HashMap;
 #[derive(Debug)]
 pub struct RestCatalog {
     pub(crate) catalog: IcebergRestCatalog,
-}
-
-#[derive(Debug, Default)]
-pub struct RestCatalogConfig {
-    pub name: String,
-    pub uri: String,
-    /// Base warehouse path; if `path` is provided, the final path becomes `warehouse/path`.
-    pub warehouse: Option<String>,
-
-    /// Optional configuration properties:
-    ///
-    /// - prefix:          Optional URL path prefix to insert after the base URI and API version.
-    /// - oauth2-server-uri: Custom OAuth2 server URI. Defaults to: [uri, PATH_V1:"v1", "oauth", "tokens"].join("/")
-    /// - token:           Static authentication token used by the client for sending requests.
-    /// - credentials:     Client credentials used to fetch a new token.
-    ///                 - None: No credentials provided.
-    ///                 - Some(None, client_secret): Only client_secret is provided.
-    ///                 - Some(Some(client_id), client_secret): Both client_id and client_secret are provided.
-    pub props: HashMap<String, String>,
-    /// If None, a default Client will be created and used.
-    pub client: Option<Client>,
 }
 
 impl RestCatalog {
