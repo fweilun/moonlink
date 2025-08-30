@@ -90,7 +90,7 @@ jobs:
             -e STORAGE_DIR=/data \
             fsouza/fake-gcs-server:latest \
             -scheme http -port 4443
-      
+
       # ─────────────── Add hostnames to /etc/hosts ──────────────────────────
       - name: Add gcs.local to /etc/hosts
         run: |
