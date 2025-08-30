@@ -15,8 +15,8 @@ pub(crate) fn random_string() -> String {
 pub(crate) fn default_rest_catalog_config() -> RestCatalogConfig {
     RestCatalogConfig {
         name: "test".to_string(),
-        rest_catalog_prop_uri: "http://localhost:8181".to_string(),
-        rest_catalog_prop_warehouse: None,
+        uri: "http://localhost:8181".to_string(),
+        warehouse: None,
         props: HashMap::new(),
         client: None,
     }

@@ -17,11 +17,19 @@ pub struct RestCatalog {
 
 #[derive(Debug, Default)]
 pub struct RestCatalogConfig {
-    // catalog name
+    /// Catalog name (logical identifier).
     pub name: String,
-    pub rest_catalog_prop_uri: String,
-    pub rest_catalog_prop_warehouse: Option<String>,
+
+    /// The REST catalog service endpoint.
+    pub uri: String,
+
+    /// The root path of the Iceberg warehouse.
+    pub warehouse: Option<String>,
+
+    /// Additional key-value properties for catalog initialization (optional).
     pub props: HashMap<String, String>,
+
+    /// Custom HTTP client (optional).
     pub client: Option<Client>,
 }
 
@@ -31,11 +39,10 @@ impl RestCatalog {
         if let Some(c) = config.client {
             builder = builder.with_client(c);
         }
-        config.props.insert(
-            REST_CATALOG_PROP_URI.to_string(),
-            config.rest_catalog_prop_uri,
-        );
-        if let Some(warehouse) = config.rest_catalog_prop_warehouse {
+        config
+            .props
+            .insert(REST_CATALOG_PROP_URI.to_string(), config.uri);
+        if let Some(warehouse) = config.warehouse {
             config
                 .props
                 .insert(REST_CATALOG_PROP_WAREHOUSE.to_string(), warehouse);
