@@ -44,7 +44,6 @@ iceberg = { git = "https://github.com/apache/iceberg-rust.git", rev = "4aacad756
 iceberg-catalog-rest = { git = "https://github.com/apache/iceberg-rust.git", rev = "4aacad756250a5a1bbc44842ea4b608e3213b641" }
 itertools = { version = "0.14" }
 lru = { version = "0.14" }
-mockito = { version = "1.7.0" }
 moka = { version = "0.12", features = ["future"] }
 more-asserts = "0.3"
 multimap = { version = "0.10", default-features = false }
