@@ -1,8 +1,8 @@
 use crate::{error::Error, Result};
 use arrow_ipc::writer::StreamWriter;
+use moonlink::ReadState;
 use moonlink_backend::MoonlinkBackend;
-use moonlink_backend::Result as BackendResult;
-use moonlink_rpc::{read, write, Request, Table};
+use moonlink_rpc::{read, write, Request, Result as RpcResult, Table};
 use std::collections::HashMap;
 use std::io::ErrorKind::{BrokenPipe, ConnectionReset, UnexpectedEof};
 use std::net::SocketAddr;
@@ -103,7 +103,10 @@ where
                 table,
                 lsn,
             } => {
-                let resp = backend.create_snapshot(database, table, lsn).await;
+                let resp: RpcResult<()> = backend
+                    .create_snapshot(database, table, lsn)
+                    .await
+                    .map_err(Into::into);
                 write(&mut stream, &resp).await?;
             }
             Request::CreateTable {
@@ -114,7 +117,7 @@ where
                 table_config,
             } => {
                 // Use default mooncake config, and local filesystem for storage layer.
-                let resp = backend
+                let resp: RpcResult<()> = backend
                     .create_table(
                         database,
                         table,
@@ -123,43 +126,52 @@ where
                         table_config,
                         None, /* input_database */
                     )
-                    .await;
+                    .await
+                    .map_err(|e| e.into());
                 write(&mut stream, &resp).await?;
             }
             Request::DropTable { database, table } => {
-                let resp = backend.drop_table(database, table).await;
+                let resp: RpcResult<()> = backend
+                    .drop_table(database, table)
+                    .await
+                    .map_err(|e| e.into());
 
                 write(&mut stream, &resp).await?;
             }
             Request::GetParquetMetadatas { data_files } => {
-                let metadata_resp = backend.get_parquet_metadatas(data_files).await;
+                let metadata_resp: RpcResult<Vec<Vec<u8>>> = backend
+                    .get_parquet_metadatas(data_files)
+                    .await
+                    .map_err(|e| e.into());
                 write(&mut stream, &metadata_resp).await?;
             }
             Request::GetTableSchema { database, table } => {
-                let resp = async {
+                let resp: RpcResult<Vec<u8>> = (async {
                     let schema = backend.get_table_schema(database, table).await?;
-                    let writer = StreamWriter::try_new(vec![], &schema)?;
-                    writer.into_inner().map_err(Error::from)
-                }
+                    let writer = StreamWriter::try_new(Vec::new(), &schema)?;
+                    Ok(writer.into_inner()?)
+                })
                 .await;
 
                 write(&mut stream, &resp).await?;
             }
             Request::ListTables {} => {
                 let tables_resp = backend.list_tables().await;
-                let tables_resp: BackendResult<Vec<Table>> = tables_resp.map(|tables| {
-                    tables
-                        .into_iter()
-                        .map(|table| Table {
-                            database: table.database,
-                            table: table.table,
-                            cardinality: table.cardinality,
-                            commit_lsn: table.commit_lsn,
-                            flush_lsn: table.flush_lsn,
-                            iceberg_warehouse_location: table.iceberg_warehouse_location,
-                        })
-                        .collect()
-                });
+                let tables_resp: RpcResult<Vec<Table>> = tables_resp
+                    .map(|tables| {
+                        tables
+                            .into_iter()
+                            .map(|table| Table {
+                                database: table.database,
+                                table: table.table,
+                                cardinality: table.cardinality,
+                                commit_lsn: table.commit_lsn,
+                                flush_lsn: table.flush_lsn,
+                                iceberg_warehouse_location: table.iceberg_warehouse_location,
+                            })
+                            .collect()
+                    })
+                    .map_err(|e| e.into());
                 write(&mut stream, &tables_resp).await?;
             }
             Request::OptimizeTable {
@@ -167,7 +179,10 @@ where
                 table,
                 mode,
             } => {
-                let resp = backend.optimize_table(database, table, &mode).await;
+                let resp: RpcResult<()> = backend
+                    .optimize_table(database, table, &mode)
+                    .await
+                    .map_err(|e| e.into());
                 write(&mut stream, &resp).await?;
             }
             Request::ScanTableBegin {
@@ -175,9 +190,10 @@ where
                 table,
                 lsn,
             } => {
-                let state = backend
+                let state: RpcResult<Arc<ReadState>> = backend
                     .scan_table(database.to_string(), table.to_string(), Some(lsn))
-                    .await;
+                    .await
+                    .map_err(|e| e.into());
 
                 write(&mut stream, &state.as_ref().map(|s| s.data.clone())).await?;
                 assert!(map.insert((database, table), state).is_none());
@@ -191,7 +207,10 @@ where
                 table,
                 files,
             } => {
-                let resp = backend.load_files(database, table, files).await;
+                let resp: RpcResult<()> = backend
+                    .load_files(database, table, files)
+                    .await
+                    .map_err(|e| e.into());
                 write(&mut stream, &resp).await?;
             }
         }

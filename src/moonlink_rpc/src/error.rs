@@ -1,3 +1,5 @@
+use arrow::error::ArrowError;
+use moonlink_backend::Error as BackendError;
 use moonlink_error::io_error_utils::get_io_error_status;
 use moonlink_error::{ErrorStatus, ErrorStruct};
 use serde::{Deserialize, Serialize};
@@ -18,9 +20,35 @@ pub enum Error {
 
     #[error("{0}")]
     PacketTooLong(ErrorStruct),
+
+    #[error("{0}")]
+    Backend(ErrorStruct),
+
+    #[error("{0}")]
+    Arrow(ErrorStruct),
 }
 
 pub type Result<T> = result::Result<T, Error>;
+
+impl From<ArrowError> for Error {
+    #[track_caller]
+    fn from(_source: ArrowError) -> Self {
+        Error::Arrow(ErrorStruct::new(
+            "Arrow error".to_string(),
+            ErrorStatus::Permanent,
+        ))
+    }
+}
+
+impl From<BackendError> for Error {
+    #[track_caller]
+    fn from(_source: BackendError) -> Self {
+        Error::Backend(ErrorStruct::new(
+            "Backend error".to_string(),
+            ErrorStatus::Permanent,
+        ))
+    }
+}
 
 impl From<bincode::error::DecodeError> for Error {
     #[track_caller]
@@ -66,7 +94,9 @@ impl Error {
             Error::Decode(err)
             | Error::Encode(err)
             | Error::Io(err)
-            | Error::PacketTooLong(err) => err.status,
+            | Error::PacketTooLong(err)
+            | Error::Backend(err)
+            | Error::Arrow(err) => err.status,
         }
     }
 }

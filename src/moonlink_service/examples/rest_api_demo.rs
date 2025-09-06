@@ -58,6 +58,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
+    let serialized_table_config = json!({
+        "mooncake": {
+            "append_only": true,
+            "row_identity": "None"
+        }
+    });
+
     // Test 2: Create a table
     println!("\n🏗️ Creating table 'demo_users'...");
     let create_table_payload = json!({
@@ -278,7 +285,7 @@ async fn read_table_via_rpc() -> Result<(), Box<dyn std::error::Error>> {
 
     // List tables first
     println!("   📋 Listing tables...");
-    let tables = moonlink_rpc::list_tables(&mut stream).await??;
+    let tables = moonlink_rpc::list_tables(&mut stream).await?;
     println!("   Found {} table(s):", tables.len());
     for table in &tables {
         println!(
@@ -313,7 +320,7 @@ async fn read_table_via_rpc() -> Result<(), Box<dyn std::error::Error>> {
             table.database.clone(),
             table.table.clone(),
         )
-        .await??;
+        .await?;
         println!("   Schema size: {} bytes", schema_bytes.len());
 
         // Scan table data
@@ -324,12 +331,12 @@ async fn read_table_via_rpc() -> Result<(), Box<dyn std::error::Error>> {
             table.table.clone(),
             0,
         )
-        .await??;
+        .await?;
         println!("   Data size: {} bytes", data_bytes.len());
 
         // End scan
         moonlink_rpc::scan_table_end(&mut stream, table.database.clone(), table.table.clone())
-            .await??;
+            .await?;
         println!("   ✅ Table scan completed");
 
         // Try to decode the Arrow data (basic attempt)

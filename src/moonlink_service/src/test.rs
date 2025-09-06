@@ -152,7 +152,6 @@ async fn run_optimize_table_test(mode: &str) {
         /*lsn=*/ 1,
     )
     .await
-    .unwrap()
     .unwrap();
     let (data_file_paths, puffin_file_paths, puffin_deletion, positional_deletion) =
         decode_serialized_read_state_for_testing(bytes);
@@ -171,7 +170,6 @@ async fn run_optimize_table_test(mode: &str) {
         TABLE.to_string(),
     )
     .await
-    .unwrap()
     .unwrap();
 }
 
@@ -246,7 +244,6 @@ async fn test_create_snapshot() {
         /*lsn=*/ lsn,
     )
     .await
-    .unwrap()
     .unwrap();
     let (data_file_paths, puffin_file_paths, puffin_deletion, positional_deletion) =
         decode_serialized_read_state_for_testing(bytes);
@@ -265,7 +262,6 @@ async fn test_create_snapshot() {
         TABLE.to_string(),
     )
     .await
-    .unwrap()
     .unwrap();
 }
 
@@ -308,7 +304,6 @@ async fn test_moonlink_standalone_data_ingestion() {
         /*lsn=*/ 1,
     )
     .await
-    .unwrap()
     .unwrap();
     let (data_file_paths, puffin_file_paths, puffin_deletion, positional_deletion) =
         decode_serialized_read_state_for_testing(bytes);
@@ -327,7 +322,6 @@ async fn test_moonlink_standalone_data_ingestion() {
         TABLE.to_string(),
     )
     .await
-    .unwrap()
     .unwrap();
 }
 
@@ -383,7 +377,6 @@ async fn test_moonlink_standalone_file_upload() {
         lsn,
     )
     .await
-    .unwrap()
     .unwrap();
     let (data_file_paths, puffin_file_paths, puffin_deletion, positional_deletion) =
         decode_serialized_read_state_for_testing(bytes);
@@ -402,7 +395,6 @@ async fn test_moonlink_standalone_file_upload() {
         TABLE.to_string(),
     )
     .await
-    .unwrap()
     .unwrap();
 }
 
@@ -460,7 +452,6 @@ async fn test_moonlink_standalone_protobuf_ingestion() {
         lsn,
     )
     .await
-    .unwrap()
     .unwrap();
     let (data_file_paths, puffin_file_paths, puffin_deletion, positional_deletion) =
         decode_serialized_read_state_for_testing(bytes);
@@ -479,7 +470,6 @@ async fn test_moonlink_standalone_protobuf_ingestion() {
         TABLE.to_string(),
     )
     .await
-    .unwrap()
     .unwrap();
 }
 
@@ -535,7 +525,6 @@ async fn test_moonlink_standalone_file_insert() {
         2,
     )
     .await
-    .unwrap()
     .unwrap();
     let (data_file_paths, puffin_file_paths, puffin_deletion, positional_deletion) =
         decode_serialized_read_state_for_testing(bytes);
@@ -554,7 +543,6 @@ async fn test_moonlink_standalone_file_insert() {
         TABLE.to_string(),
     )
     .await
-    .unwrap()
     .unwrap();
 }
 
@@ -677,7 +665,6 @@ async fn test_bulk_ingest_files() {
         /*files=*/ vec![],
     )
     .await
-    .unwrap()
     .unwrap();
 }
 

@@ -16,9 +16,11 @@ macro_rules! rpcs {
                 },)*
             }
 
-            $(pub async fn $func<S: AsyncRead + AsyncWrite + Unpin>(stream: &mut S, $($name: $type),*) -> Result<Result<$res>> {
+            $(pub async fn $func<S: AsyncRead + AsyncWrite + Unpin>(stream: &mut S, $($name: $type),*) -> Result<$res> {
                 write(stream, &Request::[<$func:camel>] { $($name),* }).await?;
-                read(stream).await
+                let result = read(stream).await;
+                println!("[DEBUG-2] {:?}", result);
+                result?
             })*
         }
     };
