@@ -154,7 +154,7 @@ async fn run_optimize_table_test(mode: &str) {
     .await
     .unwrap();
     let (data_file_paths, puffin_file_paths, puffin_deletion, positional_deletion) =
-        decode_serialized_read_state_for_testing(bytes);
+        decode_serialized_read_state_for_testing(bytes.expect("scan_table_begin error"));
     assert_eq!(data_file_paths.len(), 1);
     let record_batches = read_all_batches(&data_file_paths[0]).await;
     let expected_arrow_batch = create_test_arrow_batch();
@@ -246,7 +246,7 @@ async fn test_create_snapshot() {
     .await
     .unwrap();
     let (data_file_paths, puffin_file_paths, puffin_deletion, positional_deletion) =
-        decode_serialized_read_state_for_testing(bytes);
+        decode_serialized_read_state_for_testing(bytes.expect("scan_table_begin error"));
     assert_eq!(data_file_paths.len(), 1);
     let record_batches = read_all_batches(&data_file_paths[0]).await;
     let expected_arrow_batch = create_test_arrow_batch();
@@ -306,7 +306,7 @@ async fn test_moonlink_standalone_data_ingestion() {
     .await
     .unwrap();
     let (data_file_paths, puffin_file_paths, puffin_deletion, positional_deletion) =
-        decode_serialized_read_state_for_testing(bytes);
+        decode_serialized_read_state_for_testing(bytes.expect("scan_table_begin"));
     assert_eq!(data_file_paths.len(), 1);
     let record_batches = read_all_batches(&data_file_paths[0]).await;
     let expected_arrow_batch = create_test_arrow_batch_nested();
@@ -379,7 +379,7 @@ async fn test_moonlink_standalone_file_upload() {
     .await
     .unwrap();
     let (data_file_paths, puffin_file_paths, puffin_deletion, positional_deletion) =
-        decode_serialized_read_state_for_testing(bytes);
+        decode_serialized_read_state_for_testing(bytes.expect("scan_table_begin error"));
     assert_eq!(data_file_paths.len(), 1);
     let record_batches = read_all_batches(&data_file_paths[0]).await;
     let expected_arrow_batch = create_test_arrow_batch();
@@ -454,7 +454,7 @@ async fn test_moonlink_standalone_protobuf_ingestion() {
     .await
     .unwrap();
     let (data_file_paths, puffin_file_paths, puffin_deletion, positional_deletion) =
-        decode_serialized_read_state_for_testing(bytes);
+        decode_serialized_read_state_for_testing(bytes.expect("scan_table_begin error"));
     assert_eq!(data_file_paths.len(), 1);
     let record_batches = read_all_batches(&data_file_paths[0]).await;
     let expected_arrow_batch = create_test_arrow_batch();
@@ -527,7 +527,7 @@ async fn test_moonlink_standalone_file_insert() {
     .await
     .unwrap();
     let (data_file_paths, puffin_file_paths, puffin_deletion, positional_deletion) =
-        decode_serialized_read_state_for_testing(bytes);
+        decode_serialized_read_state_for_testing(bytes.expect("scan_table_begin error"));
     assert_eq!(data_file_paths.len(), 1);
     let record_batches = read_all_batches(&data_file_paths[0]).await;
     let expected_arrow_batch = create_test_arrow_batch();
