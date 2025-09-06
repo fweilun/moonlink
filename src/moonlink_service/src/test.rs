@@ -422,9 +422,10 @@ async fn run_optimize_table_test(mode: &str) {
         /*lsn=*/ 1,
     )
     .await
+    .unwrap()
     .unwrap();
     let (data_file_paths, puffin_file_paths, puffin_deletion, positional_deletion) =
-        decode_serialized_read_state_for_testing(bytes.expect("scan_table_begin error"));
+        decode_serialized_read_state_for_testing(bytes);
     assert_eq!(data_file_paths.len(), 1);
     let record_batches = read_all_batches(&data_file_paths[0]).await;
     let expected_arrow_batch = create_test_arrow_batch();
@@ -440,6 +441,7 @@ async fn run_optimize_table_test(mode: &str) {
         TABLE.to_string(),
     )
     .await
+    .unwrap()
     .unwrap();
 }
 
@@ -571,9 +573,10 @@ async fn test_create_snapshot() {
         /*lsn=*/ lsn,
     )
     .await
+    .unwrap()
     .unwrap();
     let (data_file_paths, puffin_file_paths, puffin_deletion, positional_deletion) =
-        decode_serialized_read_state_for_testing(bytes.expect("scan_table_begin error"));
+        decode_serialized_read_state_for_testing(bytes);
     assert_eq!(data_file_paths.len(), 1);
     let record_batches = read_all_batches(&data_file_paths[0]).await;
     let expected_arrow_batch = create_test_arrow_batch();
@@ -589,6 +592,7 @@ async fn test_create_snapshot() {
         TABLE.to_string(),
     )
     .await
+    .unwrap()
     .unwrap();
 
     // Cleanup shared directory.
@@ -634,9 +638,10 @@ async fn test_moonlink_standalone_data_ingestion() {
         /*lsn=*/ 1,
     )
     .await
+    .unwrap()
     .unwrap();
     let (data_file_paths, puffin_file_paths, puffin_deletion, positional_deletion) =
-        decode_serialized_read_state_for_testing(bytes.expect("scan_table_begin"));
+        decode_serialized_read_state_for_testing(bytes);
     assert_eq!(data_file_paths.len(), 1);
     let record_batches = read_all_batches(&data_file_paths[0]).await;
     let expected_arrow_batch = create_test_arrow_batch_nested();
@@ -652,6 +657,7 @@ async fn test_moonlink_standalone_data_ingestion() {
         TABLE.to_string(),
     )
     .await
+    .unwrap()
     .unwrap();
 }
 
@@ -707,9 +713,10 @@ async fn test_moonlink_standalone_file_upload() {
         lsn,
     )
     .await
+    .unwrap()
     .unwrap();
     let (data_file_paths, puffin_file_paths, puffin_deletion, positional_deletion) =
-        decode_serialized_read_state_for_testing(bytes.expect("scan_table_begin error"));
+        decode_serialized_read_state_for_testing(bytes);
     assert_eq!(data_file_paths.len(), 1);
     let record_batches = read_all_batches(&data_file_paths[0]).await;
     let expected_arrow_batch = create_test_arrow_batch();
@@ -725,6 +732,7 @@ async fn test_moonlink_standalone_file_upload() {
         TABLE.to_string(),
     )
     .await
+    .unwrap()
     .unwrap();
 }
 
@@ -782,9 +790,10 @@ async fn test_moonlink_standalone_protobuf_ingestion() {
         lsn,
     )
     .await
+    .unwrap()
     .unwrap();
     let (data_file_paths, puffin_file_paths, puffin_deletion, positional_deletion) =
-        decode_serialized_read_state_for_testing(bytes.expect("scan_table_begin error"));
+        decode_serialized_read_state_for_testing(bytes);
     assert_eq!(data_file_paths.len(), 1);
     let record_batches = read_all_batches(&data_file_paths[0]).await;
     let expected_arrow_batch = create_test_arrow_batch();
@@ -800,6 +809,7 @@ async fn test_moonlink_standalone_protobuf_ingestion() {
         TABLE.to_string(),
     )
     .await
+    .unwrap()
     .unwrap();
 }
 
@@ -855,9 +865,10 @@ async fn test_moonlink_standalone_file_insert() {
         2,
     )
     .await
+    .unwrap()
     .unwrap();
     let (data_file_paths, puffin_file_paths, puffin_deletion, positional_deletion) =
-        decode_serialized_read_state_for_testing(bytes.expect("scan_table_begin error"));
+        decode_serialized_read_state_for_testing(bytes);
     assert_eq!(data_file_paths.len(), 1);
     let record_batches = read_all_batches(&data_file_paths[0]).await;
     let expected_arrow_batch = create_test_arrow_batch();
@@ -873,6 +884,7 @@ async fn test_moonlink_standalone_file_insert() {
         TABLE.to_string(),
     )
     .await
+    .unwrap()
     .unwrap();
 }
 
@@ -988,6 +1000,7 @@ async fn test_bulk_ingest_files() {
         /*files=*/ vec![],
     )
     .await
+    .unwrap()
     .unwrap();
 }
 
