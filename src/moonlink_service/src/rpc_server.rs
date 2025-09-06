@@ -147,11 +147,8 @@ where
             }
             Request::ListTables {} => {
                 let tables_resp = backend.list_tables().await;
-                if let Err(e) = &tables_resp {
-                    write(&mut stream, &Err::<Vec<Table>, &moonlink_backend::Error>(e)).await?;
-                }
-                let tables_resp: BackendResult<Vec<Table>> = tables_resp.map(|table| {
-                    table
+                let tables_resp: BackendResult<Vec<Table>> = tables_resp.map(|tables| {
+                    tables
                         .into_iter()
                         .map(|table| Table {
                             database: table.database,
