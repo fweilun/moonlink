@@ -126,25 +126,6 @@ async fn test_rpc_error_propagation_nonexistent_table() {
     );
 }
 
-/// Util function to optimize table via REST API.
-async fn optimize_table(client: &reqwest::Client, database: &str, table: &str, mode: &str) {
-    let payload = get_optimize_table_payload(database, table, mode);
-    let crafted_src_table_name = format!("{database}.{table}");
-    let response = client
-        .post(format!(
-            "{REST_ADDR}/tables/{crafted_src_table_name}/optimize"
-        ))
-        .header("content-type", "application/json")
-        .json(&payload)
-        .send()
-        .await
-        .unwrap();
-    assert!(
-        response.status().is_success(),
-        "Response status is {response:?}"
-    );
-}
-
 /// Util function to test optimize table
 async fn run_optimize_table_test(mode: &str) {
     let _guard = TestGuard::new(&get_moonlink_backend_dir());
