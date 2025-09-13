@@ -1,5 +1,6 @@
 pub mod base_iceberg_snapshot_fetcher;
 pub(super) mod catalog_utils;
+pub mod cloud_security_config;
 mod data_file_manifest_manager;
 pub(super) mod deletion_vector;
 mod deletion_vector_manifest_manager;
@@ -24,6 +25,7 @@ mod table_update_proxy;
 
 #[cfg(feature = "catalog-glue")]
 pub(super) mod glue_catalog;
+
 #[cfg(feature = "catalog-rest")]
 pub(super) mod rest_catalog;
 
@@ -91,4 +93,12 @@ mod iceberg_rest_catalog_test;
 
 #[cfg(feature = "catalog-glue")]
 #[cfg(test)]
+mod glue_catalog_test_utils;
+
+#[cfg(feature = "catalog-glue")]
+#[cfg(test)]
 mod glue_catalog_test;
+
+#[cfg(feature = "catalog-glue")]
+#[cfg(test)]
+mod iceberg_glue_catalog_test;

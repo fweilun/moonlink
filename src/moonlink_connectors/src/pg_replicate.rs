@@ -13,6 +13,7 @@ pub mod util;
 use crate::pg_replicate::clients::postgres::{build_tls_connector, ReplicationClient};
 use crate::pg_replicate::conversions::cdc_event::{CdcEvent, CdcEventConversionError};
 use crate::pg_replicate::initial_copy::copy_table_stream;
+use crate::pg_replicate::initial_copy::{InitialCopyConfig, InitialCopyReaderConfig};
 use crate::pg_replicate::moonlink_sink::{SchemaChangeRequest, Sink};
 use crate::pg_replicate::postgres_source::{
     CdcStreamConfig, CdcStreamError, PostgresSource, PostgresSourceError,
@@ -24,7 +25,7 @@ use crate::Result;
 use futures::StreamExt;
 use moonlink::{
     MooncakeTableId, MoonlinkTableConfig, ObjectStorageCache, ReadStateFilepathRemap, TableEvent,
-    WalManager,
+    VisibilityLsn, WalManager,
 };
 use native_tls::{Certificate, TlsConnector};
 use postgres_native_tls::{MakeTlsConnector, TlsStream};
@@ -64,7 +65,7 @@ pub enum PostgresReplicationCommand {
         src_table_id: SrcTableId,
         schema: TableSchema,
         event_sender: mpsc::Sender<TableEvent>,
-        commit_lsn_tx: watch::Sender<u64>,
+        visibility_tx: watch::Sender<VisibilityLsn>,
         flush_lsn_rx: watch::Receiver<u64>,
         wal_flush_lsn_rx: watch::Receiver<u64>,
         ready_tx: oneshot::Sender<()>,
@@ -230,7 +231,7 @@ impl PostgresConnection {
         schema: &TableSchema,
         event_sender: mpsc::Sender<TableEvent>,
         is_recovery: bool,
-        commit_lsn_tx: watch::Sender<u64>,
+        visibility_tx: watch::Sender<VisibilityLsn>,
         table_base_path: &str,
     ) -> Result<(bool)> {
         let src_table_id = schema.src_table_id;
@@ -254,33 +255,24 @@ impl PostgresConnection {
                 .add_table_to_publication(&schema.table_name)
                 .await?;
 
-            let (stream, start_lsn) = copy_source
-                .get_table_copy_stream(&schema.table_name, &schema.column_schemas)
-                .await
-                .expect("failed to get table copy stream");
-            copy_table_stream(
-                schema.clone(),
-                stream,
-                &event_sender,
-                start_lsn.into(),
-                table_base_path,
-                None,
-            )
-            .await
-            .expect(&format!(
-                "failed to copy table for src_table_id: {}",
-                src_table_id
-            ));
-
-            // Commit the transaction
-            copy_source
-                .commit_transaction()
-                .await
-                .expect("failed to commit transaction");
+            let ic_config = InitialCopyConfig {
+                reader: InitialCopyReaderConfig {
+                    uri: self.uri.clone(),
+                    shard_count: 4,
+                },
+                writer: Default::default(),
+            };
+            let progress =
+                copy_table_stream(schema.clone(), &event_sender, table_base_path, ic_config)
+                    .await
+                    .expect(&format!(
+                        "failed to copy table for src_table_id: {}",
+                        src_table_id
+                    ));
 
             if let Err(e) = event_sender
                 .send(TableEvent::FinishInitialCopy {
-                    start_lsn: start_lsn.into(),
+                    start_lsn: progress.boundary_lsn.into(),
                 })
                 .await
             {
@@ -288,11 +280,13 @@ impl PostgresConnection {
             }
 
             // Notify read state manager with the commit LSN for the initial copy boundary.
-            self.replication_state.mark(start_lsn.into());
-            if let Err(e) = commit_lsn_tx.send(start_lsn.into()) {
+            if let Err(e) = visibility_tx.send(VisibilityLsn {
+                commit_lsn: progress.boundary_lsn.into(),
+                replication_lsn: progress.boundary_lsn.into(),
+            }) {
                 warn!(error = ?e, table_id = src_table_id, "failed to send initial copy commit lsn");
             }
-            self.replication_state.mark(start_lsn.into());
+            self.replication_state.mark(progress.boundary_lsn.into());
 
             Ok(true)
         } else {
@@ -382,7 +376,7 @@ impl PostgresConnection {
         src_table_id: SrcTableId,
         schema: TableSchema,
         event_sender: mpsc::Sender<TableEvent>,
-        commit_lsn_tx: watch::Sender<u64>,
+        visibility_tx: watch::Sender<VisibilityLsn>,
         flush_lsn_rx: watch::Receiver<u64>,
         wal_flush_lsn_rx: watch::Receiver<u64>,
     ) -> Result<oneshot::Receiver<()>> {
@@ -391,7 +385,7 @@ impl PostgresConnection {
             src_table_id,
             schema,
             event_sender,
-            commit_lsn_tx,
+            visibility_tx,
             flush_lsn_rx,
             wal_flush_lsn_rx,
             ready_tx,
@@ -505,17 +499,17 @@ impl PostgresConnection {
         .await?;
 
         // Send command to add table to replication
-        let commit_lsn_tx = table_resources
-            .commit_lsn_tx
+        let visibility_tx = table_resources
+            .visibility_tx
             .take()
-            .expect("commit_lsn_tx is None");
-        let commit_lsn_tx_for_copy = commit_lsn_tx.clone();
+            .expect("visibility_lsn_tx is None");
+        let visibility_tx_for_copy = visibility_tx.clone();
         let ready_rx = self
             .add_table_to_replication(
                 table_schema.src_table_id,
                 table_schema.clone(),
                 table_resources.event_sender.clone(),
-                commit_lsn_tx,
+                visibility_tx,
                 table_resources
                     .flush_lsn_rx
                     .take()
@@ -538,7 +532,7 @@ impl PostgresConnection {
                 &table_schema,
                 table_resources.event_sender.clone(),
                 is_recovery,
-                commit_lsn_tx_for_copy,
+                visibility_tx_for_copy,
                 table_base_path,
             )
             .await?;
@@ -743,8 +737,8 @@ pub async fn run_event_loop(
                     }
                 },
                 Some(cmd) = cmd_rx.recv() => match cmd {
-                    PostgresReplicationCommand::AddTable { src_table_id, schema, event_sender, commit_lsn_tx, flush_lsn_rx, wal_flush_lsn_rx, ready_tx } => {
-                        sink.add_table(src_table_id, event_sender, commit_lsn_tx, &schema);
+                    PostgresReplicationCommand::AddTable { src_table_id, schema, event_sender, visibility_tx, flush_lsn_rx, wal_flush_lsn_rx, ready_tx } => {
+                        sink.add_table(src_table_id, event_sender, visibility_tx, &schema);
                         flush_lsn_rxs.insert(src_table_id, flush_lsn_rx);
                         wal_flush_lsn_rxs.insert(src_table_id, wal_flush_lsn_rx);
                         stream.as_mut().add_table_schema(schema);
