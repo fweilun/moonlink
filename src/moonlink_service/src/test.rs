@@ -111,7 +111,7 @@ async fn test_rpc_error_propagation_nonexistent_table() {
     tokio::spawn(async move {
         start_with_config(config).await.unwrap();
     });
-    test_readiness_probe().await;
+    wait_for_server_ready().await;
     let mut moonlink_stream = TcpStream::connect(MOONLINK_ADDR).await.unwrap();
 
     let db = "nonexistent-db";
@@ -121,8 +121,8 @@ async fn test_rpc_error_propagation_nonexistent_table() {
         moonlink_rpc::create_snapshot(&mut moonlink_stream, db.to_string(), tbl.to_string(), 123)
             .await;
     assert!(
-        res.is_err() && format!("{:?}", res.as_ref().unwrap_err()).contains("Backend error"),
-        "Expected Backend error, but got: {res:?}"
+        res.is_err() && format!("{:?}", res.as_ref().unwrap_err()).contains("Rpc"),
+        "Expected Rpc error, but got: {res:?}"
     );
 }
 

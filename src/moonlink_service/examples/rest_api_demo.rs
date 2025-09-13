@@ -58,13 +58,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    let serialized_table_config = json!({
-        "mooncake": {
-            "append_only": true,
-            "row_identity": "None"
-        }
-    });
-
     // Test 2: Create a table
     println!("\n🏗️ Creating table 'demo_users'...");
     let create_table_payload = json!({

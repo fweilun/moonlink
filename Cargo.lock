@@ -4671,6 +4671,7 @@ name = "moonlink_error"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "bincode",
  "regex",
  "serde",
  "serde_json",
@@ -4715,7 +4716,6 @@ version = "0.0.1"
 dependencies = [
  "arrow",
  "bincode",
- "moonlink_backend",
  "moonlink_error",
  "paste",
  "serde",
@@ -4727,6 +4727,7 @@ dependencies = [
 name = "moonlink_service"
 version = "0.0.1"
 dependencies = [
+ "anyhow",
  "arrow",
  "arrow-array",
  "arrow-buffer",

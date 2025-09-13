@@ -41,10 +41,8 @@ fn serialize_error_source<S>(
 where
     S: Serializer,
 {
-    match error {
-        Some(err) => serializer.serialize_str(&err.to_string()),
-        None => serializer.serialize_none(),
-    }
+    let s = error.as_ref().map(|e| e.to_string());
+    s.serialize(serializer)
 }
 
 fn deserialize_error_source<'de, D>(deserializer: D) -> Result<Option<Arc<anyhow::Error>>, D::Error>
@@ -118,6 +116,7 @@ impl ErrorStruct {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bincode;
     use regex::Regex;
     use std::io;
 
@@ -198,5 +197,16 @@ mod tests {
         // The source should be recreated as type anyhow::Error
         let source = deserialized.source.unwrap();
         assert!(source.to_string().contains("Test file not found"));
+    }
+
+    #[test]
+    fn test_error_struct_with_source_serialization_bincode() {
+        let io_error = io::Error::new(io::ErrorKind::NotFound, "Test file not found");
+        let error = ErrorStruct::new("IO operation failed".to_string(), ErrorStatus::Permanent)
+            .with_source(io_error);
+        let config = bincode::config::standard();
+        let bytes = bincode::serde::encode_to_vec(Err::<(), ErrorStruct>(error), config).unwrap();
+        let _: Result<(), ErrorStruct> =
+            bincode::serde::decode_from_slice(&bytes, config).unwrap().0;
     }
 }

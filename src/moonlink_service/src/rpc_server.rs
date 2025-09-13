@@ -2,7 +2,8 @@ use crate::{error::Error, Result};
 use arrow_ipc::writer::StreamWriter;
 use moonlink::ReadState;
 use moonlink_backend::MoonlinkBackend;
-use moonlink_rpc::{read, write, Request, Result as RpcResult, Table};
+use moonlink_error::{ErrorStatus, ErrorStruct};
+use moonlink_rpc::{read, write, Request, RpcResult, Table};
 use std::collections::HashMap;
 use std::io::ErrorKind::{BrokenPipe, ConnectionReset, UnexpectedEof};
 use std::net::SocketAddr;
@@ -90,6 +91,10 @@ pub async fn start_tcp_server(backend: Arc<MoonlinkBackend>, addr: SocketAddr) -
     }
 }
 
+fn into_backend_error<E: Into<anyhow::Error>>(e: E) -> ErrorStruct {
+    ErrorStruct::new("backend error".to_string(), ErrorStatus::Permanent).with_source(e)
+}
+
 async fn handle_stream<S>(backend: Arc<MoonlinkBackend>, mut stream: S) -> Result<()>
 where
     S: AsyncRead + AsyncWrite + Unpin,
@@ -103,11 +108,11 @@ where
                 table,
                 lsn,
             } => {
-                let resp: RpcResult<()> = backend
+                let res: RpcResult<()> = backend
                     .create_snapshot(database, table, lsn)
                     .await
-                    .map_err(Into::into);
-                write(&mut stream, &resp).await?;
+                    .map_err(into_backend_error);
+                write(&mut stream, &res).await?;
             }
             Request::CreateTable {
                 database,
@@ -117,7 +122,7 @@ where
                 table_config,
             } => {
                 // Use default mooncake config, and local filesystem for storage layer.
-                let resp: RpcResult<()> = backend
+                let res: RpcResult<()> = backend
                     .create_table(
                         database,
                         table,
@@ -127,37 +132,41 @@ where
                         None, /* input_database */
                     )
                     .await
-                    .map_err(|e| e.into());
-                write(&mut stream, &resp).await?;
+                    .map_err(into_backend_error);
+                write(&mut stream, &res).await?;
             }
             Request::DropTable { database, table } => {
-                let resp: RpcResult<()> = backend
+                let res: RpcResult<()> = backend
                     .drop_table(database, table)
                     .await
-                    .map_err(|e| e.into());
+                    .map_err(into_backend_error);
 
-                write(&mut stream, &resp).await?;
+                write(&mut stream, &res).await?;
             }
             Request::GetParquetMetadatas { data_files } => {
-                let metadata_resp: RpcResult<Vec<Vec<u8>>> = backend
+                let metadata_res: RpcResult<Vec<Vec<u8>>> = backend
                     .get_parquet_metadatas(data_files)
                     .await
-                    .map_err(|e| e.into());
-                write(&mut stream, &metadata_resp).await?;
+                    .map_err(into_backend_error);
+                write(&mut stream, &metadata_res).await?;
             }
             Request::GetTableSchema { database, table } => {
-                let resp: RpcResult<Vec<u8>> = (async {
-                    let schema = backend.get_table_schema(database, table).await?;
-                    let writer = StreamWriter::try_new(Vec::new(), &schema)?;
-                    Ok(writer.into_inner()?)
+                let res: RpcResult<Vec<u8>> = (async {
+                    let schema = backend
+                        .get_table_schema(database, table)
+                        .await
+                        .map_err(into_backend_error)?;
+                    let writer =
+                        StreamWriter::try_new(Vec::new(), &schema).map_err(into_backend_error)?;
+                    writer.into_inner().map_err(into_backend_error)
                 })
                 .await;
 
-                write(&mut stream, &resp).await?;
+                write(&mut stream, &res).await?;
             }
             Request::ListTables {} => {
-                let tables_resp = backend.list_tables().await;
-                let tables_resp: RpcResult<Vec<Table>> = tables_resp
+                let tables_res = backend.list_tables().await;
+                let tables_res: RpcResult<Vec<Table>> = tables_res
                     .map(|tables| {
                         tables
                             .into_iter()
@@ -171,19 +180,19 @@ where
                             })
                             .collect()
                     })
-                    .map_err(|e| e.into());
-                write(&mut stream, &tables_resp).await?;
+                    .map_err(into_backend_error);
+                write(&mut stream, &tables_res).await?;
             }
             Request::OptimizeTable {
                 database,
                 table,
                 mode,
             } => {
-                let resp: RpcResult<()> = backend
+                let res: RpcResult<()> = backend
                     .optimize_table(database, table, &mode)
                     .await
-                    .map_err(|e| e.into());
-                write(&mut stream, &resp).await?;
+                    .map_err(into_backend_error);
+                write(&mut stream, &res).await?;
             }
             Request::ScanTableBegin {
                 database,
@@ -193,25 +202,25 @@ where
                 let state: RpcResult<Arc<ReadState>> = backend
                     .scan_table(database.to_string(), table.to_string(), Some(lsn))
                     .await
-                    .map_err(|e| e.into());
+                    .map_err(into_backend_error);
 
                 write(&mut stream, &state.as_ref().map(|s| s.data.clone())).await?;
                 assert!(map.insert((database, table), state).is_none());
             }
             Request::ScanTableEnd { database, table } => {
                 assert!(map.remove(&(database, table)).is_some());
-                write(&mut stream, &()).await?;
+                write(&mut stream, &RpcResult::<()>::Ok(())).await?;
             }
             Request::LoadFiles {
                 database,
                 table,
                 files,
             } => {
-                let resp: RpcResult<()> = backend
+                let res: RpcResult<()> = backend
                     .load_files(database, table, files)
                     .await
-                    .map_err(|e| e.into());
-                write(&mut stream, &resp).await?;
+                    .map_err(into_backend_error);
+                write(&mut stream, &res).await?;
             }
         }
     }
