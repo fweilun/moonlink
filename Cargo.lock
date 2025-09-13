@@ -4671,6 +4671,7 @@ name = "moonlink_error"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "bincode",
  "regex",
  "serde",
  "serde_json",
