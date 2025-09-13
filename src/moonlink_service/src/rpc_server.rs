@@ -1,6 +1,5 @@
 use crate::{error::Error, Result};
 use arrow_ipc::writer::StreamWriter;
-use moonlink::ReadState;
 use moonlink_backend::MoonlinkBackend;
 use moonlink_error::{ErrorStatus, ErrorStruct};
 use moonlink_rpc::{read, write, Request, RpcResult, Table};
@@ -199,13 +198,21 @@ where
                 table,
                 lsn,
             } => {
-                let state: RpcResult<Arc<ReadState>> = backend
+                match backend
                     .scan_table(database.to_string(), table.to_string(), Some(lsn))
                     .await
-                    .map_err(into_backend_error);
-
-                write(&mut stream, &state.as_ref().map(|s| s.data.clone())).await?;
-                assert!(map.insert((database, table), state).is_none());
+                    .map_err(into_backend_error)
+                {
+                    Ok(state) => {
+                        let res: RpcResult<Vec<u8>> = Ok(state.data.clone());
+                        write(&mut stream, &res).await?;
+                        assert!(map.insert((database, table), state).is_none());
+                    }
+                    Err(err) => {
+                        let res: RpcResult<Vec<u8>> = Err(err);
+                        write(&mut stream, &res).await?;
+                    }
+                }
             }
             Request::ScanTableEnd { database, table } => {
                 assert!(map.remove(&(database, table)).is_some());
