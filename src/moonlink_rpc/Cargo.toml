@@ -5,7 +5,6 @@ edition = { workspace = true }
 license = "MIT"
 
 [dependencies]
-arrow = { workspace = true }
 bincode = { workspace = true }
 moonlink_error = { workspace = true }
 paste = { workspace = true }
