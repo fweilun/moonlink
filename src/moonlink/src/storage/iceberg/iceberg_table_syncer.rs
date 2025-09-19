@@ -1,3 +1,4 @@
+use crate::storage::cache::object_storage::base_cache::InlineEvictedFiles;
 use crate::storage::compaction::table_compaction::RemappedRecordLocation;
 use crate::storage::filesystem::accessor::base_filesystem_accessor::BaseFileSystemAccess;
 use crate::storage::iceberg::deletion_vector::DeletionVector;
@@ -33,7 +34,6 @@ use crate::Result;
 
 use futures::{stream, StreamExt, TryStreamExt};
 use iceberg::table::Table;
-use smallvec::SmallVec;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::vec;
@@ -47,6 +47,8 @@ use iceberg::{Error as IcebergError, Result as IcebergResult};
 const DEFAULT_DATA_FILE_UPLOAD_CONCURRENCY: usize = 128;
 /// Default concurrency for iceberg file indices import.
 const DEFAULT_FILE_INDEX_IMPORT_CONCURRENCY: usize = 128;
+/// Default concurrency for iceberg deletion vector synchronize.
+const DEFAULT_SYNC_DELETION_VECTOR_CONCURRENCY: usize = 128;
 
 /// Results for importing data files into iceberg table.
 pub struct DataFileImportResult {
@@ -82,7 +84,7 @@ struct SingleFileIndexImportResult {
 }
 
 /// A prepared deletion-vector blob ready for Puffin metadata recording.
-struct PreparedBlob {
+struct PreparedDeletionVectorBlob {
     /// Source data file in Iceberg.
     data_file: Arc<MooncakeDataFile>,
     /// Puffin index.
@@ -100,13 +102,13 @@ struct PreparedBlob {
 }
 
 /// Result of finalizing a deletion-vector blob into the Iceberg table.
-struct FinalizeResult {
+struct FinalizeDeletionVectorResult {
     /// File id.
     file_id: FileId,
     /// Puffin blob reference.
     puffin_blob_ref: PuffinBlobRef,
     /// Evicted files.
-    evicted_files_to_delete: SmallVec<[String; 1]>,
+    evicted_files_to_delete: InlineEvictedFiles,
     /// Catalog entry describing the associated data file.
     entry: DataFileEntry,
 }
@@ -360,12 +362,13 @@ impl IcebergTableManager {
         })
     }
 
+    // prepare the deletion vector blob that would be written into puffin metadata file.
     async fn prepare_deletion_vector_blob(
         &self,
         puffin_index: u64,
         data_file: Arc<MooncakeDataFile>,
         new_deletion_vector: BatchDeletionVector,
-    ) -> IcebergResult<PreparedBlob> {
+    ) -> IcebergResult<PreparedDeletionVectorBlob> {
         let mut entry = self
             .persisted_data_files
             .get(&data_file.file_id())
@@ -408,7 +411,7 @@ impl IcebergTableManager {
         )
         .await?;
         puffin_writer.add(blob, CompressionCodec::None).await?;
-        Ok(PreparedBlob {
+        Ok(PreparedDeletionVectorBlob {
             data_file,
             puffin_index,
             blob_size,
@@ -419,18 +422,21 @@ impl IcebergTableManager {
         })
     }
 
+    // Finalize deletion vector by caching it's Puffin file
     async fn finalize_deletion_vector(
         &self,
         file_params: &PersistenceFileParams,
-        puffin_out: PreparedBlob,
-    ) -> IcebergResult<FinalizeResult> {
-        let unique_file_id = self
-            .get_unique_table_id_for_deletion_vector_puffin(file_params, puffin_out.puffin_index);
+        deletion_vector_blob: PreparedDeletionVectorBlob,
+    ) -> IcebergResult<FinalizeDeletionVectorResult> {
+        let unique_file_id = self.get_unique_table_id_for_deletion_vector_puffin(
+            file_params,
+            deletion_vector_blob.puffin_index,
+        );
         let (cache_handle, evicted_files_to_delete) = self
             .object_storage_cache
             .get_cache_entry(
                 unique_file_id,
-                &puffin_out.puffin_filepath,
+                &deletion_vector_blob.puffin_filepath,
                 self.filesystem_accessor.as_ref(),
             )
             .await
@@ -439,7 +445,7 @@ impl IcebergTableManager {
                     iceberg::ErrorKind::Unexpected,
                     format!(
                         "Failed to get cache entry for {}",
-                        puffin_out.puffin_filepath
+                        deletion_vector_blob.puffin_filepath
                     ),
                 )
                 .with_retryable(true)
@@ -449,20 +455,20 @@ impl IcebergTableManager {
         let puffin_blob_ref = PuffinBlobRef {
             puffin_file_cache_handle: cache_handle.unwrap(),
             start_offset: 4_u32, // Puffin file starts with 4 magic bytes.
-            blob_size: puffin_out.blob_size as u32,
-            num_rows: puffin_out.deleted_row_count,
+            blob_size: deletion_vector_blob.blob_size as u32,
+            num_rows: deletion_vector_blob.deleted_row_count,
         };
 
-        Ok(FinalizeResult {
-            file_id: puffin_out.data_file.file_id(),
+        Ok(FinalizeDeletionVectorResult {
+            file_id: deletion_vector_blob.data_file.file_id(),
             puffin_blob_ref,
             evicted_files_to_delete,
-            entry: puffin_out.entry,
+            entry: deletion_vector_blob.entry,
         })
     }
 
     /// Dump committed deletion logs into iceberg table, only the changed part will be persisted.
-    /// Precondition: batch deletion vector is not empty.
+    /// Precondition: batch deletion vector in new_deletion_logs is not empty.
     ///
     /// Puffin blob write condition:
     /// 1. No compression is performed, otherwise it's hard to get blob size without another read operation.
@@ -474,8 +480,8 @@ impl IcebergTableManager {
     ) -> IcebergResult<DeletionVectorsSyncResult> {
         let mut puffin_deletion_blobs = HashMap::with_capacity(new_deletion_logs.len());
         let mut evicted_files_to_delete = vec![];
-        let prepared: Vec<IcebergResult<PreparedBlob>>;
-        let finalized: Vec<IcebergResult<FinalizeResult>>;
+        let prepared: Vec<IcebergResult<PreparedDeletionVectorBlob>>;
+        let finalized: Vec<IcebergResult<FinalizeDeletionVectorResult>>;
         {
             let mgr: &Self = self;
             prepared = stream::iter(new_deletion_logs.into_iter().enumerate().map(
@@ -489,11 +495,11 @@ impl IcebergTableManager {
                     .await
                 },
             ))
-            .buffer_unordered(usize::MAX)
+            .buffer_unordered(DEFAULT_SYNC_DELETION_VECTOR_CONCURRENCY)
             .collect()
             .await;
         }
-        let mut prepared: Vec<PreparedBlob> =
+        let mut prepared: Vec<PreparedDeletionVectorBlob> =
             prepared.into_iter().collect::<IcebergResult<Vec<_>>>()?;
         for task in &mut prepared {
             let writer = task.puffin_writer.take().unwrap();
@@ -511,7 +517,7 @@ impl IcebergTableManager {
                 let mgr = mgr;
                 mgr.finalize_deletion_vector(file_params, task).await
             }))
-            .buffer_unordered(usize::MAX)
+            .buffer_unordered(DEFAULT_SYNC_DELETION_VECTOR_CONCURRENCY)
             .collect()
             .await;
         }
