@@ -1,6 +1,4 @@
 use async_trait::async_trait;
-/// A trait which defines deletion vector write related interfaces.
-use iceberg::puffin::PuffinWriter;
 use iceberg::spec::{Schema as IcebergSchema, TableMetadata};
 use iceberg::table::Table;
 use iceberg::{Catalog, Result as IcebergResult, TableIdent};
@@ -25,14 +23,6 @@ pub trait PuffinWrite {
         puffin_metadata: Vec<PuffinBlobMetadataProxy>,
         puffin_blob_type: PuffinBlobType,
     );
-    /// Add puffin metadata from the writer, and close it.
-    #[allow(dead_code)]
-    async fn record_puffin_metadata_and_close(
-        &mut self,
-        puffin_filepath: String,
-        puffin_writer: PuffinWriter,
-        puffin_blob_type: PuffinBlobType,
-    ) -> IcebergResult<()>;
 
     /// Set data files to remove, their corresponding deletion vectors will be removed alongside.
     fn set_data_files_to_remove(&mut self, data_files: HashSet<String>);

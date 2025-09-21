@@ -502,6 +502,7 @@ impl IcebergTableManager {
         }
         let mut prepared: Vec<PreparedDeletionVectorBlob> =
             prepared.into_iter().collect::<IcebergResult<Vec<_>>>()?;
+
         for task in &mut prepared {
             let puffin_metadata = task.puffin_metadata.take().unwrap();
             self.catalog.record_puffin_metadata(

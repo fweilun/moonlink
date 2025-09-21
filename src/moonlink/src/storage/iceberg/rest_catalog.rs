@@ -1,8 +1,6 @@
 use super::moonlink_catalog::{CatalogAccess, PuffinBlobType, PuffinWrite, SchemaUpdate};
 use crate::storage::filesystem::accessor_config::AccessorConfig;
-use crate::storage::iceberg::catalog_utils::{
-    close_puffin_writer_and_record_metadata, create_table_impl, update_table_impl,
-};
+use crate::storage::iceberg::catalog_utils::{create_table_impl, update_table_impl};
 use crate::storage::iceberg::iceberg_table_config::RestCatalogConfig;
 use crate::storage::iceberg::io_utils as iceberg_io_utils;
 use crate::storage::iceberg::puffin_writer_proxy::PuffinBlobMetadataProxy;
@@ -10,7 +8,6 @@ use crate::storage::iceberg::table_commit_proxy::TableCommitProxy;
 use crate::storage::iceberg::table_update_proxy::TableUpdateProxy;
 use async_trait::async_trait;
 use iceberg::io::FileIO;
-use iceberg::puffin::PuffinWriter;
 use iceberg::spec::{Schema as IcebergSchema, TableMetadata};
 use iceberg::table::Table;
 use iceberg::CatalogBuilder;
@@ -192,21 +189,6 @@ impl PuffinWrite for RestCatalog {
             puffin_metadata,
             puffin_blob_type,
         );
-    }
-    async fn record_puffin_metadata_and_close(
-        &mut self,
-        puffin_filepath: String,
-        puffin_writer: PuffinWriter,
-        puffin_blob_type: PuffinBlobType,
-    ) -> IcebergResult<()> {
-        close_puffin_writer_and_record_metadata(
-            puffin_filepath,
-            puffin_writer,
-            puffin_blob_type,
-            &mut self.table_update_proxy,
-        )
-        .await?;
-        Ok(())
     }
 
     fn set_data_files_to_remove(&mut self, data_files: HashSet<String>) {
