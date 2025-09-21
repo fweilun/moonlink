@@ -38,7 +38,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::vec;
 
-use iceberg::puffin::{CompressionCodec, PuffinWriter};
+use iceberg::puffin::CompressionCodec;
 use iceberg::spec::DataFile;
 use iceberg::transaction::{ApplyTransactionAction, Transaction};
 use iceberg::{Error as IcebergError, Result as IcebergResult};
@@ -95,8 +95,8 @@ struct PreparedDeletionVectorBlob {
     entry: DataFileEntry,
     /// Puffin file path the blob is stored.
     puffin_filepath: String,
-    /// Puffin writier for the blob.
-    puffin_writer: Option<PuffinWriter>,
+    /// Puffin metadata for the blob.
+    puffin_metadata: Option<Vec<PuffinBlobMetadataProxy>>,
     /// Deleted row count.
     deleted_row_count: usize,
 }
@@ -411,12 +411,13 @@ impl IcebergTableManager {
         )
         .await?;
         puffin_writer.add(blob, CompressionCodec::None).await?;
+        let puffin_metadata = get_puffin_metadata_and_close(puffin_writer).await?;
         Ok(PreparedDeletionVectorBlob {
             data_file,
             puffin_index,
             blob_size,
             puffin_filepath,
-            puffin_writer: Some(puffin_writer),
+            puffin_metadata: Some(puffin_metadata),
             deleted_row_count,
             entry,
         })
@@ -502,14 +503,12 @@ impl IcebergTableManager {
         let mut prepared: Vec<PreparedDeletionVectorBlob> =
             prepared.into_iter().collect::<IcebergResult<Vec<_>>>()?;
         for task in &mut prepared {
-            let writer = task.puffin_writer.take().unwrap();
-            self.catalog
-                .record_puffin_metadata_and_close(
-                    task.puffin_filepath.clone(),
-                    writer,
-                    PuffinBlobType::DeletionVector,
-                )
-                .await?;
+            let puffin_metadata = task.puffin_metadata.take().unwrap();
+            self.catalog.record_puffin_metadata(
+                task.puffin_filepath.clone(),
+                puffin_metadata,
+                PuffinBlobType::DeletionVector,
+            );
         }
         {
             let mgr: &Self = self;
