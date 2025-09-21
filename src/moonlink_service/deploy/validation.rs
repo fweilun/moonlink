@@ -121,7 +121,7 @@ pub(crate) async fn create_table(client: &reqwest::Client, database: &str, table
 
 pub(crate) async fn drop_table(client: &reqwest::Client, database: &str, table: &str) {
     let crafted_src_table_name = format!("{database}.{table}");
-    let payload = get_drop_table_payload(DATABASE, TABLE);
+    let payload = get_drop_table_payload(database, table);
     let response = client
         .delete(format!("{REST_ADDR}/tables/{crafted_src_table_name}"))
         .header("content-type", "application/json")
