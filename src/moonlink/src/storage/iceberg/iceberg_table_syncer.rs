@@ -91,7 +91,7 @@ struct PreparedDeletionVectorBlob {
     puffin_index: u64,
     /// Blob size.
     blob_size: usize,
-    /// Catalog entry for the associated data file.
+    /// Data file entry
     entry: DataFileEntry,
     /// Puffin file path the blob is stored.
     puffin_filepath: String,
@@ -109,7 +109,7 @@ struct FinalizeDeletionVectorResult {
     puffin_blob_ref: PuffinBlobRef,
     /// Evicted files.
     evicted_files_to_delete: InlineEvictedFiles,
-    /// Catalog entry describing the associated data file.
+    /// Data file entry
     entry: DataFileEntry,
 }
 
@@ -469,7 +469,7 @@ impl IcebergTableManager {
     }
 
     /// Dump committed deletion logs into iceberg table, only the changed part will be persisted.
-    /// Precondition: batch deletion vector in new_deletion_logs is not empty.
+    /// Precondition: batch deletion vector in [`new_deletion_logs`] is not empty.
     ///
     /// Puffin blob write condition:
     /// 1. No compression is performed, otherwise it's hard to get blob size without another read operation.
