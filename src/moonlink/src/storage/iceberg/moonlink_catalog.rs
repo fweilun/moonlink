@@ -26,6 +26,7 @@ pub trait PuffinWrite {
         puffin_blob_type: PuffinBlobType,
     );
     /// Add puffin metadata from the writer, and close it.
+    #[allow(dead_code)]
     async fn record_puffin_metadata_and_close(
         &mut self,
         puffin_filepath: String,
