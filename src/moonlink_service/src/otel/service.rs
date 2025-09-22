@@ -10,7 +10,6 @@ use axum::{
     routing::post,
     Router,
 };
-
 use opentelemetry::global;
 use opentelemetry_otlp::{Protocol, WithExportConfig};
 use opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequest;
@@ -27,7 +26,7 @@ use tracing::error;
 const DEFAULT_REST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 /// Default otel endpoint.
 const DEFAULT_HTTP_OTEL_ENDPOINT: &str = "http://127.0.0.1:3435/v1/metrics";
-/// Default flush interval for otel exporter.
+/// Default flush interval (seconds) for otel exporter.
 const DEFAULT_EXPORTER_FLUSH_INTERVAL: u64 = 2;
 
 pub fn create_otel_router(state: OtelState) -> Router {

@@ -22,10 +22,12 @@ mod table_snapshot;
 pub mod table_status;
 pub mod table_status_reader;
 mod transaction_stream;
+
 use super::iceberg::puffin_utils::PuffinBlobRef;
 use super::index::{FileIndex, MemIndex, MooncakeIndex};
 use super::storage_utils::{MooncakeDataFileRef, RawDeletionRecord, RecordLocation};
 use crate::error::Result;
+use crate::observability::SnapshotCreationStats;
 use crate::row::{IdentityProp, MoonlinkRow};
 use crate::storage::cache::object_storage::base_cache::CacheTrait;
 use crate::storage::compaction::compactor::{CompactionBuilder, CompactionFileParams};
@@ -52,8 +54,6 @@ pub(crate) use crate::storage::mooncake_table::table_snapshot::{
     IcebergSnapshotDataCompactionResult, IcebergSnapshotImportPayload,
     IcebergSnapshotIndexMergePayload, IcebergSnapshotPayload, IcebergSnapshotResult,
 };
-// use observa::stats::SnapshotCreationStats;
-use crate::observability::SnapshotCreationStats;
 use crate::storage::mooncake_table_config::MooncakeTableConfig;
 use crate::storage::snapshot_options::MaintenanceOption;
 use crate::storage::snapshot_options::SnapshotOption;
@@ -72,7 +72,6 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
-// use moonlink_service::
 use table_snapshot::{IcebergSnapshotImportResult, IcebergSnapshotIndexMergeResult};
 #[cfg(test)]
 use tokio::sync::mpsc::Receiver;
@@ -1236,7 +1235,6 @@ impl MooncakeTable {
                     deletion_vector: None,
                 });
         }
-        println!("Append moonlink wor success!!");
         Ok(())
     }
 

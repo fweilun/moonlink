@@ -82,7 +82,9 @@ pub async fn start_with_config(config: ServiceConfig) -> Result<()> {
     // Set logging config before service start.
     let _guard = logging::init_logging(config.log_directory.clone());
     // Set global meter provider config before service start.
-    initialize_opentelemetry_meter_provider()?;
+    if config.otel_api_port.is_some() {
+        initialize_opentelemetry_meter_provider()?;
+    }
 
     // Register HTTP endpoint for readiness probe.
     let service_status = if config.in_standalone_deployment_mode() {
