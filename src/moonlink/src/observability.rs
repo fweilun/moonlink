@@ -12,6 +12,7 @@ impl SnapshotCreationStats {
         Arc::new(SnapshotCreationStats {
             latency_hist: meter
                 .f64_histogram("snapshot_creation_latency")
+                .with_description("snapshot create latency histogram (second)")
                 .with_boundaries(vec![0.0, 0.2, 0.5, 0.8, 1.0, 2.0, 5.0])
                 .build(),
         })

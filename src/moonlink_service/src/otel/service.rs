@@ -78,19 +78,30 @@ pub async fn start_otel_service(
 }
 
 pub(crate) fn initialize_opentelemetry_meter_provider() -> Result<()> {
-    let exporter = opentelemetry_otlp::MetricExporter::builder()
+    let otel_exporter = opentelemetry_otlp::MetricExporter::builder()
         .with_http()
         .with_endpoint(DEFAULT_HTTP_OTEL_ENDPOINT)
         .with_protocol(Protocol::HttpBinary) // send protobuf message
         .build()?;
 
-    let reader = PeriodicReader::builder(exporter)
+    let stdout_exporter = opentelemetry_stdout::MetricExporter::builder().build();
+
+    let otel_reader = PeriodicReader::builder(otel_exporter)
         .with_interval(std::time::Duration::from_secs(
             DEFAULT_EXPORTER_FLUSH_INTERVAL,
         ))
         .build();
 
-    let meter_provider = SdkMeterProvider::builder().with_reader(reader).build();
+    let stdout_reader = PeriodicReader::builder(stdout_exporter)
+        .with_interval(std::time::Duration::from_secs(
+            DEFAULT_EXPORTER_FLUSH_INTERVAL,
+        ))
+        .build();
+
+    let meter_provider = SdkMeterProvider::builder()
+        .with_reader(otel_reader)
+        .with_reader(stdout_reader)
+        .build();
     global::set_meter_provider(meter_provider);
     Ok(())
 }
