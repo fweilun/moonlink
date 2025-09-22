@@ -22,7 +22,6 @@ use tower::timeout::TimeoutLayer;
 use tower::{BoxError, ServiceBuilder};
 use tower_http::cors::{Any, CorsLayer};
 use tracing::error;
-use tracing_subscriber::EnvFilter;
 
 /// Default timeout for otel API calls.
 const DEFAULT_REST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
@@ -76,15 +75,10 @@ pub async fn start_otel_service(
         })
         .await?;
 
-    initialize_opentelemetry_meter_provider()?;
     Ok(())
 }
 
-fn initialize_opentelemetry_meter_provider() -> Result<()> {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .try_init();
-
+pub(crate) fn initialize_opentelemetry_meter_provider() -> Result<()> {
     let exporter = opentelemetry_otlp::MetricExporter::builder()
         .with_http()
         .with_endpoint(DEFAULT_HTTP_OTEL_ENDPOINT)

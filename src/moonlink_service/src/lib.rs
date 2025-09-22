@@ -17,6 +17,8 @@ use tokio::{
 };
 use tracing::{error, info};
 
+use crate::otel::service::initialize_opentelemetry_meter_provider;
+
 /// Default readiness probe port number.
 pub(crate) const READINESS_PROBE_PORT: u16 = 5050;
 
@@ -79,6 +81,8 @@ fn setup_readiness_probe() -> Arc<ServiceStatus> {
 pub async fn start_with_config(config: ServiceConfig) -> Result<()> {
     // Set logging config before service start.
     let _guard = logging::init_logging(config.log_directory.clone());
+    // Set global meter provider config before service start.
+    initialize_opentelemetry_meter_provider()?;
 
     // Register HTTP endpoint for readiness probe.
     let service_status = if config.in_standalone_deployment_mode() {
