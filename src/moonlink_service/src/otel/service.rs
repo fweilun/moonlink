@@ -10,7 +10,11 @@ use axum::{
     routing::post,
     Router,
 };
+
+use opentelemetry::global;
+use opentelemetry_otlp::{Protocol, WithExportConfig};
 use opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequest;
+use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 use prost::Message;
 use std::sync::Arc;
 use tokio::sync::oneshot;
@@ -18,9 +22,14 @@ use tower::timeout::TimeoutLayer;
 use tower::{BoxError, ServiceBuilder};
 use tower_http::cors::{Any, CorsLayer};
 use tracing::error;
+use tracing_subscriber::EnvFilter;
 
 /// Default timeout for otel API calls.
 const DEFAULT_REST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+/// Default otel endpoint.
+const DEFAULT_HTTP_OTEL_ENDPOINT: &str = "http://127.0.0.1:3435/v1/metrics";
+/// Default flush interval for otel exporter.
+const DEFAULT_EXPORTER_FLUSH_INTERVAL: u64 = 2;
 
 pub fn create_otel_router(state: OtelState) -> Router {
     let timeout_layer = ServiceBuilder::new()
@@ -67,6 +76,29 @@ pub async fn start_otel_service(
         })
         .await?;
 
+    initialize_opentelemetry_meter_provider()?;
+    Ok(())
+}
+
+fn initialize_opentelemetry_meter_provider() -> Result<()> {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .try_init();
+
+    let exporter = opentelemetry_otlp::MetricExporter::builder()
+        .with_http()
+        .with_endpoint(DEFAULT_HTTP_OTEL_ENDPOINT)
+        .with_protocol(Protocol::HttpBinary) // send protobuf message
+        .build()?;
+
+    let reader = PeriodicReader::builder(exporter)
+        .with_interval(std::time::Duration::from_secs(
+            DEFAULT_EXPORTER_FLUSH_INTERVAL,
+        ))
+        .build();
+
+    let meter_provider = SdkMeterProvider::builder().with_reader(reader).build();
+    global::set_meter_provider(meter_provider);
     Ok(())
 }
 

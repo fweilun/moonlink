@@ -52,6 +52,8 @@ pub(crate) use crate::storage::mooncake_table::table_snapshot::{
     IcebergSnapshotDataCompactionResult, IcebergSnapshotImportPayload,
     IcebergSnapshotIndexMergePayload, IcebergSnapshotPayload, IcebergSnapshotResult,
 };
+// use observa::stats::SnapshotCreationStats;
+use crate::observability::SnapshotCreationStats;
 use crate::storage::mooncake_table_config::MooncakeTableConfig;
 use crate::storage::snapshot_options::MaintenanceOption;
 use crate::storage::snapshot_options::SnapshotOption;
@@ -65,14 +67,12 @@ use delete_vector::BatchDeletionVector;
 pub(crate) use disk_slice::DiskSliceWriter;
 use mem_slice::MemSlice;
 use more_asserts as ma;
-use opentelemetry::global;
-use opentelemetry::metrics::Histogram;
-use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 pub(crate) use snapshot::SnapshotTableState;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
+// use moonlink_service::
 use table_snapshot::{IcebergSnapshotImportResult, IcebergSnapshotIndexMergeResult};
 #[cfg(test)]
 use tokio::sync::mpsc::Receiver;
@@ -211,37 +211,6 @@ impl Snapshot {
             self.metadata.mooncake_table_id, self.metadata.table_id, self.snapshot_version
         ));
         directory
-    }
-}
-
-struct SnapshotStats {
-    creation_latency: Histogram<f64>,
-}
-
-impl SnapshotStats {
-    pub fn new() -> Result<Arc<Self>> {
-        let exporter = opentelemetry_otlp::MetricExporter::builder()
-            .with_http()
-            .build()?;
-        let reader = PeriodicReader::builder(exporter)
-            .with_interval(std::time::Duration::from_secs(2))
-            .build();
-
-        let meter_provider = SdkMeterProvider::builder().with_reader(reader).build();
-        global::set_meter_provider(meter_provider.clone());
-
-        let meter = global::meter("mooncake table");
-
-        let creation_latency = meter
-            .f64_histogram("creation_latency")
-            .with_description("creation_latency histogram")
-            .with_boundaries(vec![0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 3.0, 5.0])
-            .build();
-        Ok(Arc::new(Self { creation_latency }))
-    }
-
-    fn update_creation_latency(&self, time: f64) {
-        self.creation_latency.record(time, &[]);
     }
 }
 
@@ -532,7 +501,7 @@ pub struct MooncakeTable {
     pub completed_unrecorded_flush_lsns: BTreeSet<u64>,
 
     /// snapshot stats
-    snapshot_stats: Arc<SnapshotStats>,
+    snapshot_stats: Arc<SnapshotCreationStats>,
 
     /// Table replay sender.
     event_replay_tx: Option<mpsc::UnboundedSender<MooncakeTableEvent>>,
@@ -640,7 +609,7 @@ impl MooncakeTable {
             ongoing_flush_lsns: BTreeMap::new(),
             completed_unrecorded_flush_lsns: BTreeSet::new(),
             event_replay_tx: None,
-            snapshot_stats: SnapshotStats::new()?,
+            snapshot_stats: SnapshotCreationStats::new(),
         })
     }
 
@@ -1121,7 +1090,7 @@ impl MooncakeTable {
                 .instrument(info_span!("create_snapshot_async"))
                 .await;
             let time = start.elapsed().as_secs_f64();
-            snapshot_stats.update_creation_latency(time);
+            snapshot_stats.update(time);
         });
     }
 
@@ -1267,6 +1236,7 @@ impl MooncakeTable {
                     deletion_vector: None,
                 });
         }
+        println!("Append moonlink wor success!!");
         Ok(())
     }
 

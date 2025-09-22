@@ -1,6 +1,7 @@
 use arrow_schema::ArrowError;
 use moonlink_error::io_error_utils::get_io_error_status;
 use moonlink_error::{ErrorStatus, ErrorStruct};
+use opentelemetry_otlp::ExporterBuildError;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::io;
@@ -29,6 +30,9 @@ pub enum Error {
 
     #[error("{0}")]
     HttpRequest(ErrorStruct),
+
+    #[error("{0}")]
+    OtelExporter(ErrorStruct),
 }
 
 pub type Result<T> = result::Result<T, Error>;
@@ -39,6 +43,16 @@ impl Error {
         let error_message =
             format!("Failed to make HTTP request with HTTP status code {status_code:?}");
         Self::Http(ErrorStruct::new(error_message, ErrorStatus::Permanent))
+    }
+}
+
+impl From<ExporterBuildError> for Error {
+    #[track_caller]
+    fn from(source: ExporterBuildError) -> Self {
+        let status = ErrorStatus::Permanent;
+        Error::OtelExporter(
+            ErrorStruct::new("otel exporter build error".to_string(), status).with_source(source),
+        )
     }
 }
 
