@@ -33,6 +33,9 @@ pub enum Error {
 
     #[error("{0}")]
     OtelExporter(ErrorStruct),
+
+    #[error("{0}")]
+    OtelInvalidOption(ErrorStruct),
 }
 
 pub type Result<T> = result::Result<T, Error>;

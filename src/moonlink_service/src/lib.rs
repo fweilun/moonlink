@@ -4,6 +4,7 @@ mod otel;
 pub(crate) mod rest_api;
 mod rpc_server;
 
+pub use error::Error;
 pub use error::Result;
 
 use moonlink_backend::MoonlinkBackend;
@@ -42,6 +43,8 @@ pub struct ServiceConfig {
     pub tcp_port: Option<u16>,
     /// Log persistence directory.
     pub log_directory: Option<String>,
+    /// Otel collector endpoint: "stdout", "otel", or None (default).
+    pub otel_endpoint: Option<String>,
 }
 
 impl ServiceConfig {
@@ -82,8 +85,8 @@ pub async fn start_with_config(config: ServiceConfig) -> Result<()> {
     // Set logging config before service start.
     let _guard = logging::init_logging(config.log_directory.clone());
     // Set global meter provider config before service start.
-    if config.otel_api_port.is_some() {
-        initialize_opentelemetry_meter_provider()?;
+    if let Some(endpoint) = config.otel_endpoint.clone() {
+        initialize_opentelemetry_meter_provider(endpoint)?;
     }
 
     // Register HTTP endpoint for readiness probe.

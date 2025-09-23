@@ -1,5 +1,5 @@
 use crate::otel::otel_state::OtelState;
-use crate::Result;
+use crate::{Error, Result};
 use axum::error_handling::HandleErrorLayer;
 use axum::http::Method;
 use axum::{
@@ -10,6 +10,7 @@ use axum::{
     routing::post,
     Router,
 };
+use moonlink_error::{ErrorStatus, ErrorStruct};
 use opentelemetry::global;
 use opentelemetry_otlp::{Protocol, WithExportConfig};
 use opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequest;
@@ -27,7 +28,8 @@ const DEFAULT_REST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs
 /// Default otel endpoint.
 const DEFAULT_HTTP_OTEL_ENDPOINT: &str = "http://127.0.0.1:3435/v1/metrics";
 /// Default flush interval (seconds) for otel exporter.
-const DEFAULT_EXPORTER_FLUSH_INTERVAL: u64 = 2;
+static DEFAULT_EXPORTER_FLUSH_INTERVAL_IN_SECONDS: std::time::Duration =
+    std::time::Duration::from_secs(2);
 
 pub fn create_otel_router(state: OtelState) -> Router {
     let timeout_layer = ServiceBuilder::new()
@@ -77,31 +79,35 @@ pub async fn start_otel_service(
     Ok(())
 }
 
-pub(crate) fn initialize_opentelemetry_meter_provider() -> Result<()> {
-    let otel_exporter = opentelemetry_otlp::MetricExporter::builder()
-        .with_http()
-        .with_endpoint(DEFAULT_HTTP_OTEL_ENDPOINT)
-        .with_protocol(Protocol::HttpBinary) // send protobuf message
-        .build()?;
+pub(crate) fn initialize_opentelemetry_meter_provider(endpoint: String) -> Result<()> {
+    let meter_provider = match endpoint.as_str() {
+        "otel" => {
+            let otel_exporter = opentelemetry_otlp::MetricExporter::builder()
+                .with_http()
+                .with_endpoint(DEFAULT_HTTP_OTEL_ENDPOINT)
+                .with_protocol(Protocol::HttpBinary) // send protobuf message
+                .build()?;
 
-    let stdout_exporter = opentelemetry_stdout::MetricExporter::builder().build();
+            let reader = PeriodicReader::builder(otel_exporter)
+                .with_interval(DEFAULT_EXPORTER_FLUSH_INTERVAL_IN_SECONDS)
+                .build();
 
-    let otel_reader = PeriodicReader::builder(otel_exporter)
-        .with_interval(std::time::Duration::from_secs(
-            DEFAULT_EXPORTER_FLUSH_INTERVAL,
-        ))
-        .build();
+            Ok(SdkMeterProvider::builder().with_reader(reader).build())
+        }
+        "stdout" => {
+            let stdout_exporter = opentelemetry_stdout::MetricExporter::builder().build();
+            let reader = PeriodicReader::builder(stdout_exporter)
+                .with_interval(DEFAULT_EXPORTER_FLUSH_INTERVAL_IN_SECONDS)
+                .build();
 
-    let stdout_reader = PeriodicReader::builder(stdout_exporter)
-        .with_interval(std::time::Duration::from_secs(
-            DEFAULT_EXPORTER_FLUSH_INTERVAL,
-        ))
-        .build();
+            Ok(SdkMeterProvider::builder().with_reader(reader).build())
+        }
+        _ => Err(Error::OtelInvalidOption(ErrorStruct::new(
+            "Invalid otel_endpoint option.".to_string(),
+            ErrorStatus::Permanent,
+        ))),
+    }?;
 
-    let meter_provider = SdkMeterProvider::builder()
-        .with_reader(otel_reader)
-        .with_reader(stdout_reader)
-        .build();
     global::set_meter_provider(meter_provider);
     Ok(())
 }

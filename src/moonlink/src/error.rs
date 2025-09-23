@@ -41,7 +41,7 @@ pub enum Error {
     PbToMoonlinkRowError(ErrorStruct),
 
     #[error("{0}")]
-    ExporterBuildError(ErrorStruct),
+    OtelExporterBuildError(ErrorStruct),
 }
 
 pub type Result<T> = result::Result<T, Error>;
@@ -56,7 +56,7 @@ impl Error {
 impl From<ExporterBuildError> for Error {
     #[track_caller]
     fn from(source: ExporterBuildError) -> Self {
-        Error::ExporterBuildError(
+        Error::OtelExporterBuildError(
             ErrorStruct::new("exporter build error".to_string(), ErrorStatus::Permanent)
                 .with_source(source),
         )
@@ -197,7 +197,7 @@ impl Error {
             | Error::OpenDal(err)
             | Error::JoinError(err)
             | Error::PbToMoonlinkRowError(err)
-            | Error::ExporterBuildError(err)
+            | Error::OtelExporterBuildError(err)
             | Error::Json(err) => err.status,
         }
     }

@@ -44,6 +44,10 @@ struct Cli {
     /// Log directory, stream to stdout/stderr if unspecified.
     #[arg(long)]
     log_dir: Option<String>,
+
+    /// Otel collector endpoint: "stdout", "otel", or None (default).
+    #[arg(long)]
+    otel_endpoint: Option<String>,
 }
 
 #[tokio::main]
@@ -71,6 +75,7 @@ pub async fn main() -> Result<()> {
             Some(cli.otel_port.unwrap_or(DEFAULT_OTEL_PORT))
         },
         log_directory: None,
+        otel_endpoint: cli.otel_endpoint,
     };
 
     start_with_config(config).await

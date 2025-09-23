@@ -66,6 +66,7 @@ pub(crate) fn get_service_config() -> ServiceConfig {
         otel_api_port: Some(OTEL_API_PORT),
         tcp_port: Some(TCP_PORT),
         log_directory: None,
+        otel_endpoint: None,
     }
 }
 
