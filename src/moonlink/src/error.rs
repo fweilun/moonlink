@@ -2,7 +2,7 @@ use arrow::error::ArrowError;
 use iceberg::Error as IcebergError;
 use moonlink_error::io_error_utils::get_io_error_status;
 use moonlink_error::{ErrorStatus, ErrorStruct};
-use opentelemetry_otlp::ExporterBuildError;
+use opentelemetry_otlp::ExporterBuildError as OtelExporterBuildError;
 use parquet::errors::ParquetError;
 use serde::{Deserialize, Serialize};
 use std::io;
@@ -53,9 +53,9 @@ impl Error {
     }
 }
 
-impl From<ExporterBuildError> for Error {
+impl From<OtelExporterBuildError> for Error {
     #[track_caller]
-    fn from(source: ExporterBuildError) -> Self {
+    fn from(source: OtelExporterBuildError) -> Self {
         Error::OtelExporterBuildError(
             ErrorStruct::new("exporter build error".to_string(), ErrorStatus::Permanent)
                 .with_source(source),

@@ -18,13 +18,10 @@ impl SnapshotCreationStats {
         })
     }
 
-    pub fn update(&self, t: u64, table_id: u32) {
+    pub fn update(&self, t: u64, table_name: String) {
         self.latency_hist.record(
             t,
-            &[KeyValue::new(
-                "moonlink.mooncake_table_id",
-                table_id.to_string(),
-            )],
+            &[KeyValue::new("moonlink.mooncake_table_id", table_name)],
         );
     }
 }

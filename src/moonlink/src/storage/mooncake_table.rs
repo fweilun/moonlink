@@ -1082,7 +1082,7 @@ impl MooncakeTable {
 
         let table_notify = self.table_notify.as_ref().unwrap().clone();
         let snapshot_stats = self.snapshot_stats.clone();
-        let table_id = self.metadata.table_id;
+        let table_name = self.metadata.name.clone();
         // Create a detached task, whose completion will be notified separately.
         tokio::task::spawn(async move {
             let start = Instant::now();
@@ -1090,7 +1090,7 @@ impl MooncakeTable {
                 .instrument(info_span!("create_snapshot_async"))
                 .await;
             let time = start.elapsed().as_millis() as u64;
-            snapshot_stats.update(time, table_id);
+            snapshot_stats.update(time, table_name);
         });
     }
 
