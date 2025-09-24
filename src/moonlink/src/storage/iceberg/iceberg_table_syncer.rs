@@ -36,7 +36,8 @@ use futures::{stream, StreamExt, TryStreamExt};
 use iceberg::table::Table;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::vec;
+use std::{time, vec};
+use time::Instant;
 
 use iceberg::puffin::CompressionCodec;
 use iceberg::spec::DataFile;
@@ -716,6 +717,7 @@ impl IcebergTableManager {
         self.validate_new_data_files(&new_data_files)?;
         self.validate_old_data_files(&old_data_files)?;
 
+        let time = Instant::now();
         // Persist data files.
         let data_file_import_result = self
             .sync_data_files(
@@ -726,6 +728,7 @@ impl IcebergTableManager {
                     .data_file_records_remap,
             )
             .await?;
+        let load_data_file_latency = time.elapsed().as_millis() as u64;
 
         // Persist committed deletion logs.
         let mut new_deletion_vector =
@@ -745,11 +748,13 @@ impl IcebergTableManager {
                     .is_none());
             }
         }
-
+        let time = Instant::now();
         let deletion_vectors_sync_result = self
             .sync_deletion_vector(new_deletion_vector, &file_params)
             .await?;
+        let load_deletion_vector_latency = time.elapsed().as_millis() as u64;
 
+        let time = Instant::now();
         let remote_file_indices = self
             .sync_file_indices(
                 &new_file_indices,
@@ -757,6 +762,7 @@ impl IcebergTableManager {
                 data_file_import_result.local_data_files_to_remote,
             )
             .await?;
+        let load_file_indices_latency = time.elapsed().as_millis() as u64;
 
         // Update snapshot summary properties.
         let snapshot_properties = HashMap::<String, String>::from([(
