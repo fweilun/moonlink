@@ -1,3 +1,4 @@
+use crate::observability::IcebergPersistencyStats;
 use crate::storage::cache::object_storage::base_cache::CacheTrait;
 use crate::storage::filesystem::accessor::base_filesystem_accessor::BaseFileSystemAccess;
 use crate::storage::iceberg::catalog_utils;
@@ -70,6 +71,9 @@ pub struct IcebergTableManager {
 
     /// Maps from remote data file path to its file id.
     pub(crate) remote_data_file_to_file_id: HashMap<String, FileId>,
+
+    /// Iceberg persistency stats.
+    pub(crate) iceberg_persistency_stats: Arc<IcebergPersistencyStats>,
 }
 
 impl IcebergTableManager {
@@ -93,6 +97,7 @@ impl IcebergTableManager {
             persisted_data_files: HashMap::new(),
             persisted_file_indices: HashMap::new(),
             remote_data_file_to_file_id: HashMap::new(),
+            iceberg_persistency_stats: IcebergPersistencyStats::new(),
         })
     }
 
@@ -120,6 +125,7 @@ impl IcebergTableManager {
             persisted_data_files: HashMap::new(),
             persisted_file_indices: HashMap::new(),
             remote_data_file_to_file_id: HashMap::new(),
+            iceberg_persistency_stats: IcebergPersistencyStats::new(),
         })
     }
 

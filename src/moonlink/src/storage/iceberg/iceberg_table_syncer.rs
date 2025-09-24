@@ -763,7 +763,12 @@ impl IcebergTableManager {
             )
             .await?;
         let load_file_indices_latency = time.elapsed().as_millis() as u64;
-
+        self.iceberg_persistency_stats.update(
+            load_data_file_latency,
+            load_file_indices_latency,
+            load_deletion_vector_latency,
+            self.mooncake_table_metadata.mooncake_table_id.clone(),
+        );
         // Update snapshot summary properties.
         let snapshot_properties = HashMap::<String, String>::from([(
             MOONCAKE_TABLE_FLUSH_LSN.to_string(),

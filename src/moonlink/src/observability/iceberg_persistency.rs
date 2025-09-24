@@ -5,30 +5,37 @@ use std::sync::Arc;
 #[derive(Debug)]
 pub(crate) struct IcebergPersistencyStats {
     data_files_latency: Histogram<u64>,
-    file_indices_deletion_vector_latency: Histogram<u64>,
+    file_indices_latency: Histogram<u64>,
+    deletion_vector_latency: Histogram<u64>,
 }
 
 impl IcebergPersistencyStats {
-    pub fn new() -> Arc<Self> {
+    pub(crate) fn new() -> Arc<Self> {
         let meter = global::meter("iceberg_persistency_latency");
         Arc::new(IcebergPersistencyStats {
             data_files_latency: meter
                 .u64_histogram("load_data_files_latency")
-                .with_description("Latency (ms) for loading data files during iceberg persistence")
+                .with_description("Latency (ms) for loading data files")
                 .with_boundaries(vec![50.0, 100.0, 200.0, 300.0, 400.0, 500.0])
                 .build(),
-            file_indices_deletion_vector_latency: meter
-                .u64_histogram("load_file_indices_and_deletion_vector_latency")
-                .with_description("Latency (ms) for loading file indices & deletion vectors")
+            file_indices_latency: meter
+                .u64_histogram("load_file_indices_latency")
+                .with_description("Latency (ms) for loading file indices")
+                .with_boundaries(vec![50.0, 100.0, 200.0, 300.0, 400.0, 500.0])
+                .build(),
+            deletion_vector_latency: meter
+                .u64_histogram("load_deletion_vector_latency")
+                .with_description("Latency (ms) for loading deletion vector")
                 .with_boundaries(vec![50.0, 100.0, 200.0, 300.0, 400.0, 500.0])
                 .build(),
         })
     }
 
-    pub fn update(
+    pub(crate) fn update(
         &self,
         data_files_latency: u64,
-        file_indices_deletion_vector_latency: u64,
+        file_indices_latency: u64,
+        deletion_vector_latency: u64,
         mooncake_table_id: String,
     ) {
         let attrs = [KeyValue::new(
@@ -36,7 +43,9 @@ impl IcebergPersistencyStats {
             mooncake_table_id,
         )];
         self.data_files_latency.record(data_files_latency, &attrs);
-        self.file_indices_deletion_vector_latency
-            .record(file_indices_deletion_vector_latency, &attrs);
+        self.file_indices_latency
+            .record(file_indices_latency, &attrs);
+        self.deletion_vector_latency
+            .record(deletion_vector_latency, &attrs);
     }
 }
