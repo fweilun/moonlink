@@ -1,7 +1,7 @@
 pub mod error;
 pub mod event_sync;
 pub mod mooncake_table_id;
-pub mod observability;
+mod observability;
 pub mod row;
 mod storage;
 pub(crate) mod table_handler;

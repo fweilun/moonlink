@@ -2,7 +2,7 @@ use opentelemetry::metrics::Histogram;
 use opentelemetry::{global, KeyValue};
 use std::sync::Arc;
 
-pub struct SnapshotCreationStats {
+pub(crate) struct SnapshotCreationStats {
     latency_hist: Histogram<u64>,
 }
 
@@ -18,8 +18,13 @@ impl SnapshotCreationStats {
         })
     }
 
-    pub fn update(&self, t: u64, table_id: String) {
-        self.latency_hist
-            .record(t, &[KeyValue::new("moonlink.mooncake_table_id", table_id)]);
+    pub fn update(&self, t: u64, mooncake_table_id: String) {
+        self.latency_hist.record(
+            t,
+            &[KeyValue::new(
+                "moonlink.mooncake_table_id",
+                mooncake_table_id,
+            )],
+        );
     }
 }

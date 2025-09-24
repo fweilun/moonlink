@@ -9,6 +9,7 @@ pub use error::Result;
 
 use moonlink_backend::MoonlinkBackend;
 use moonlink_metadata_store::SqliteMetadataStore;
+use otel::service::initialize_opentelemetry_meter_provider;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicBool;
 use std::sync::{atomic::Ordering, Arc};
@@ -17,8 +18,6 @@ use tokio::{
     signal::unix::{signal, SignalKind},
 };
 use tracing::{error, info};
-
-use crate::otel::service::initialize_opentelemetry_meter_provider;
 
 /// Default readiness probe port number.
 pub(crate) const READINESS_PROBE_PORT: u16 = 5050;
@@ -38,13 +37,13 @@ pub struct ServiceConfig {
     /// Used for REST API as ingestion source.
     pub rest_api_port: Option<u16>,
     /// Used for otel data ingestion.
-    pub otel_api_port: Option<u16>,
+    pub otel_ingestion_api_port: Option<u16>,
     /// Used for moonlink standalone deployment.
     pub tcp_port: Option<u16>,
     /// Log persistence directory.
     pub log_directory: Option<String>,
-    /// Otel collector endpoint: "stdout", "otel", or None (default).
-    pub otel_endpoint: Option<String>,
+    /// Otel export endpoint: "stdout", "otel", or None (default).
+    pub otel_export_endpoint: Option<String>,
 }
 
 impl ServiceConfig {
@@ -85,7 +84,7 @@ pub async fn start_with_config(config: ServiceConfig) -> Result<()> {
     // Set logging config before service start.
     let _guard = logging::init_logging(config.log_directory.clone());
     // Set global meter provider config before service start.
-    if let Some(endpoint) = config.otel_endpoint.clone() {
+    if let Some(endpoint) = config.otel_export_endpoint.clone() {
         initialize_opentelemetry_meter_provider(endpoint)?;
     }
 
@@ -138,31 +137,31 @@ pub async fn start_with_config(config: ServiceConfig) -> Result<()> {
     };
 
     // Optionally start otel HTTP endpoint.
-    let (otel_api_handle, otel_api_shutdown_signal) = if let Some(otel_port) = config.otel_api_port
-    {
-        if let Some(rest_port) = config.rest_api_port {
-            let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
-            let backend_clone = backend.clone();
-            let handle = tokio::spawn(async move {
-                if let Err(e) = otel::service::start_otel_service(
-                    otel_port,
-                    rest_port,
-                    backend_clone,
-                    shutdown_rx,
-                )
-                .await
-                {
-                    error!("OTEL service failed: {}", e);
-                }
-                info!("Starting OTLP/HTTP metrics starts at port {otel_port}");
-            });
-            (Some(handle), Some(shutdown_tx))
+    let (otel_api_handle, otel_api_shutdown_signal) =
+        if let Some(otel_port) = config.otel_ingestion_api_port {
+            if let Some(rest_port) = config.rest_api_port {
+                let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+                let backend_clone = backend.clone();
+                let handle = tokio::spawn(async move {
+                    if let Err(e) = otel::service::start_otel_service(
+                        otel_port,
+                        rest_port,
+                        backend_clone,
+                        shutdown_rx,
+                    )
+                    .await
+                    {
+                        error!("OTEL service failed: {}", e);
+                    }
+                    info!("Starting OTLP/HTTP metrics starts at port {otel_port}");
+                });
+                (Some(handle), Some(shutdown_tx))
+            } else {
+                (None, None)
+            }
         } else {
             (None, None)
-        }
-    } else {
-        (None, None)
-    };
+        };
 
     // Optionally start TCP server.
     let tcp_api_handle = if let Some(port) = config.tcp_port {

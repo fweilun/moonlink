@@ -28,7 +28,7 @@ const DEFAULT_REST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs
 /// Default otel endpoint.
 const DEFAULT_HTTP_OTEL_ENDPOINT: &str = "http://127.0.0.1:3435/v1/metrics";
 /// Default flush interval (seconds) for otel exporter.
-static DEFAULT_EXPORTER_FLUSH_INTERVAL_IN_SECONDS: std::time::Duration =
+const DEFAULT_EXPORTER_FLUSH_INTERVAL_IN_SECONDS: std::time::Duration =
     std::time::Duration::from_secs(2);
 
 pub fn create_otel_router(state: OtelState) -> Router {
@@ -79,6 +79,8 @@ pub async fn start_otel_service(
     Ok(())
 }
 
+/// Initialize exporter and reader for meter provider
+/// If this function is called after creating a meter with global::meter(), the previously created meter will still be bound to the old exporter.
 pub(crate) fn initialize_opentelemetry_meter_provider(endpoint: String) -> Result<()> {
     let meter_provider = match endpoint.as_str() {
         "otel" => {

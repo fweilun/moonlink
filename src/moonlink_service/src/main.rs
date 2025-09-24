@@ -31,7 +31,7 @@ struct Cli {
 
     /// Port for otel API server (optional, defaults to 3435).
     #[arg(long)]
-    otel_port: Option<u16>,
+    otel_ingestion_port: Option<u16>,
     /// Disable standalone deployment.
     #[arg(long)]
     no_otel_api: bool,
@@ -47,7 +47,7 @@ struct Cli {
 
     /// Otel collector endpoint: "stdout", "otel", or None (default).
     #[arg(long)]
-    otel_endpoint: Option<String>,
+    otel_export_endpoint: Option<String>,
 }
 
 #[tokio::main]
@@ -69,13 +69,13 @@ pub async fn main() -> Result<()> {
         } else {
             Some(cli.tcp_port.unwrap_or(DEFAULT_TCP_PORT))
         },
-        otel_api_port: if cli.no_otel_api {
+        otel_ingestion_api_port: if cli.no_otel_api {
             None
         } else {
-            Some(cli.otel_port.unwrap_or(DEFAULT_OTEL_PORT))
+            Some(cli.otel_ingestion_port.unwrap_or(DEFAULT_OTEL_PORT))
         },
         log_directory: None,
-        otel_endpoint: cli.otel_endpoint,
+        otel_export_endpoint: cli.otel_export_endpoint,
     };
 
     start_with_config(config).await
