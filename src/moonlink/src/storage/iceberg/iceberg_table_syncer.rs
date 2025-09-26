@@ -729,6 +729,11 @@ impl IcebergTableManager {
             )
             .await?;
         let load_data_file_latency = time.elapsed().as_millis() as u64;
+        self.iceberg_persistency_stats.update_data_file_latency(
+            true,
+            load_data_file_latency,
+            self.mooncake_table_metadata.mooncake_table_id.clone(),
+        );
 
         // Persist committed deletion logs.
         let mut new_deletion_vector =
@@ -749,10 +754,17 @@ impl IcebergTableManager {
             }
         }
         let time = Instant::now();
+        let deletion_vector_is_empty = new_deletion_vector.is_empty();
         let deletion_vectors_sync_result = self
             .sync_deletion_vector(new_deletion_vector, &file_params)
             .await?;
-        let load_deletion_vector_latency = time.elapsed().as_millis() as u64;
+        let load_deletion_vectors_latency = time.elapsed().as_millis() as u64;
+        self.iceberg_persistency_stats
+            .update_deletion_vectors_latency(
+                !deletion_vector_is_empty,
+                load_deletion_vectors_latency,
+                self.mooncake_table_metadata.mooncake_table_id.clone(),
+            );
 
         let time = Instant::now();
         let remote_file_indices = self
@@ -762,13 +774,14 @@ impl IcebergTableManager {
                 data_file_import_result.local_data_files_to_remote,
             )
             .await?;
+
         let load_file_indices_latency = time.elapsed().as_millis() as u64;
-        self.iceberg_persistency_stats.update(
-            load_data_file_latency,
+        self.iceberg_persistency_stats.update_file_indices_latency(
+            !new_file_indices.is_empty() || !old_file_indices.is_empty(),
             load_file_indices_latency,
-            load_deletion_vector_latency,
             self.mooncake_table_metadata.mooncake_table_id.clone(),
         );
+
         // Update snapshot summary properties.
         let snapshot_properties = HashMap::<String, String>::from([(
             MOONCAKE_TABLE_FLUSH_LSN.to_string(),

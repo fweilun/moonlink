@@ -73,7 +73,7 @@ pub struct IcebergTableManager {
     pub(crate) remote_data_file_to_file_id: HashMap<String, FileId>,
 
     /// Iceberg persistency stats.
-    pub(crate) iceberg_persistency_stats: Arc<IcebergPersistencyStats>,
+    pub(crate) iceberg_persistency_stats: IcebergPersistencyStats,
 }
 
 impl IcebergTableManager {
