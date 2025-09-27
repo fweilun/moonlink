@@ -22,17 +22,17 @@ impl IcebergPersistencyStats {
         let latency = match stats_type {
             IcebergPersistenceStage::DataFiles => meter
                 .u64_histogram("sync_data_files_latency")
-                .with_description("Latency (ms) for synchronizing data files")
+                .with_description("Latency (ms) for data files synchronization")
                 .with_boundaries(vec![50.0, 100.0, 200.0, 300.0, 400.0, 500.0])
                 .build(),
             IcebergPersistenceStage::FileIndices => meter
                 .u64_histogram("sync_file_indices_latency")
-                .with_description("Latency (ms) for synchronizing file indices")
+                .with_description("Latency (ms) for file indices synchronization")
                 .with_boundaries(vec![50.0, 100.0, 200.0, 300.0, 400.0, 500.0])
                 .build(),
             IcebergPersistenceStage::DeletionVectors => meter
                 .u64_histogram("sync_deletion_vectors_latency")
-                .with_description("Latency (ms) for synchronizing deletion vectors")
+                .with_description("Latency (ms) for deletion vectors synchronization")
                 .with_boundaries(vec![50.0, 100.0, 200.0, 300.0, 400.0, 500.0])
                 .build(),
         };

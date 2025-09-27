@@ -73,13 +73,13 @@ pub struct IcebergTableManager {
     /// Maps from remote data file path to its file id.
     pub(crate) remote_data_file_to_file_id: HashMap<String, FileId>,
 
-    /// Iceberg persistency stats for synchroniziing data files.
+    /// Iceberg persistency stats for data files synchronization.
     pub(crate) iceberg_persistency_stats_sync_data_files: Arc<IcebergPersistencyStats>,
 
-    /// Iceberg persistency stats for synchroniziing deletion vectors.
+    /// Iceberg persistency stats for deletion vectors synchronization.
     pub(crate) iceberg_persistency_stats_sync_deletion_vectors: Arc<IcebergPersistencyStats>,
 
-    /// Iceberg persistency stats for synchroniziing file indices.
+    /// Iceberg persistency stats for file indices synchronization.
     pub(crate) iceberg_persistency_stats_sync_file_indices: Arc<IcebergPersistencyStats>,
 }
 
