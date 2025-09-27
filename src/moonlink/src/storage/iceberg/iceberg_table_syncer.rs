@@ -233,9 +233,15 @@ impl IcebergTableManager {
         old_data_files: Vec<MooncakeDataFileRef>,
         data_file_records_remap: &HashMap<RecordLocation, RemappedRecordLocation>,
     ) -> IcebergResult<DataFileImportResult> {
+        let _guard = if new_data_files.is_empty() {
+            None
+        } else {
+            Some(self.iceberg_persistency_stats_sync_data_files.start())
+        };
         let mut local_data_files_to_remote = HashMap::with_capacity(new_data_files.len());
         let mut new_remote_data_files = Vec::with_capacity(new_data_files.len());
         let mut new_iceberg_data_files = Vec::with_capacity(new_data_files.len());
+        // let _guard = self.iceberg_persistency_stats_sync_data_files.start();
 
         let iceberg_table = self.iceberg_table.clone();
         let filesystem_accessor = self.filesystem_accessor.clone();
@@ -480,6 +486,11 @@ impl IcebergTableManager {
         new_deletion_logs: HashMap<MooncakeDataFileRef, BatchDeletionVector>,
         file_params: &PersistenceFileParams,
     ) -> IcebergResult<DeletionVectorsSyncResult> {
+        let _guard = if new_deletion_logs.is_empty() {
+            None
+        } else {
+            Some(self.iceberg_persistency_stats_sync_deletion_vectors.start())
+        };
         let mut puffin_deletion_blobs = HashMap::with_capacity(new_deletion_logs.len());
         let mut evicted_files_to_delete = vec![];
         let prepared: Vec<IcebergResult<PreparedDeletionVectorBlob>>;
@@ -596,6 +607,13 @@ impl IcebergTableManager {
         // After sync, file index still stores local index file location.
         // After cache design, we should be able to provide a "handle" abstraction, which could be either local or remote.
         // The hash map here is merely a workaround to pass remote path to iceberg file index structure.
+
+        // Record file indices persistency latency
+        let _guard = if file_indices_to_import.is_empty() && local_data_file_to_remote.is_empty() {
+            None
+        } else {
+            Some(self.iceberg_persistency_stats_sync_file_indices.start())
+        };
         let mut local_index_file_to_remote = HashMap::new();
 
         let iceberg_table = self.iceberg_table.as_ref().unwrap();
@@ -717,20 +735,16 @@ impl IcebergTableManager {
         self.validate_new_data_files(&new_data_files)?;
         self.validate_old_data_files(&old_data_files)?;
 
-        let iceberg_persistency_stats_load_data_files =
-            self.iceberg_persistency_stats_load_data_files.clone();
         // Persist data files.
-        let data_file_import_result: DataFileImportResult = {
-            let _guard = iceberg_persistency_stats_load_data_files.start();
-            self.sync_data_files(
+        let data_file_import_result = self
+            .sync_data_files(
                 new_data_files,
                 old_data_files,
                 &snapshot_payload
                     .data_compaction_payload
                     .data_file_records_remap,
             )
-            .await?
-        };
+            .await?;
 
         // Persist committed deletion logs.
         let mut new_deletion_vector =
@@ -751,36 +765,17 @@ impl IcebergTableManager {
             }
         }
 
-        let iceberg_persistency_stats_load_deletion_vectors =
-            self.iceberg_persistency_stats_load_deletion_vectors.clone();
-        let deletion_vectors_sync_result = {
-            if new_deletion_vector.is_empty() {
-                DeletionVectorsSyncResult {
-                    puffin_deletion_blobs: HashMap::new(),
-                    evicted_files_to_delete: Vec::new(),
-                }
-            } else {
-                let _guard = iceberg_persistency_stats_load_deletion_vectors.start();
-                self.sync_deletion_vector(new_deletion_vector, &file_params)
-                    .await?
-            }
-        };
+        let deletion_vectors_sync_result = self
+            .sync_deletion_vector(new_deletion_vector, &file_params)
+            .await?;
 
-        let iceberg_persistency_stats_load_file_indices =
-            self.iceberg_persistency_stats_load_file_indices.clone();
-        let remote_file_indices: Vec<MooncakeFileIndex> = {
-            if new_file_indices.is_empty() && old_file_indices.is_empty() {
-                vec![]
-            } else {
-                let _guard = iceberg_persistency_stats_load_file_indices.start();
-                self.sync_file_indices(
-                    &new_file_indices,
-                    &old_file_indices,
-                    data_file_import_result.local_data_files_to_remote,
-                )
-                .await?
-            }
-        };
+        let remote_file_indices = self
+            .sync_file_indices(
+                &new_file_indices,
+                &old_file_indices,
+                data_file_import_result.local_data_files_to_remote,
+            )
+            .await?;
 
         // Update snapshot summary properties.
         let snapshot_properties = HashMap::<String, String>::from([(

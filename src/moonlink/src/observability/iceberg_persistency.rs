@@ -4,7 +4,7 @@ use opentelemetry::metrics::Histogram;
 use opentelemetry::{global, KeyValue};
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum IcebergPersistentStage {
+pub(crate) enum IcebergPersistenceStage {
     DataFiles,
     FileIndices,
     DeletionVectors,
@@ -17,22 +17,22 @@ pub(crate) struct IcebergPersistencyStats {
 }
 
 impl IcebergPersistencyStats {
-    pub(crate) fn new(mooncake_table_id: String, stats_type: IcebergPersistentStage) -> Self {
+    pub(crate) fn new(mooncake_table_id: String, stats_type: IcebergPersistenceStage) -> Self {
         let meter = global::meter("iceberg_persistency");
         let latency = match stats_type {
-            IcebergPersistentStage::DataFiles => meter
-                .u64_histogram("load_data_files_latency")
-                .with_description("Latency (ms) for loading data files")
+            IcebergPersistenceStage::DataFiles => meter
+                .u64_histogram("sync_data_files_latency")
+                .with_description("Latency (ms) for synchronizing data files")
                 .with_boundaries(vec![50.0, 100.0, 200.0, 300.0, 400.0, 500.0])
                 .build(),
-            IcebergPersistentStage::FileIndices => meter
-                .u64_histogram("load_file_indices_latency")
-                .with_description("Latency (ms) for loading file indices")
+            IcebergPersistenceStage::FileIndices => meter
+                .u64_histogram("sync_file_indices_latency")
+                .with_description("Latency (ms) for synchronizing file indices")
                 .with_boundaries(vec![50.0, 100.0, 200.0, 300.0, 400.0, 500.0])
                 .build(),
-            IcebergPersistentStage::DeletionVectors => meter
-                .u64_histogram("load_deletion_vectors_latency")
-                .with_description("Latency (ms) for loading deletion vectors")
+            IcebergPersistenceStage::DeletionVectors => meter
+                .u64_histogram("sync_deletion_vectors_latency")
+                .with_description("Latency (ms) for synchronizing deletion vectors")
                 .with_boundaries(vec![50.0, 100.0, 200.0, 300.0, 400.0, 500.0])
                 .build(),
         };
