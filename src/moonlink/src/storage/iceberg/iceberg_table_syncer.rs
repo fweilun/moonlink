@@ -48,7 +48,7 @@ use iceberg::{Error as IcebergError, Result as IcebergResult};
 const DEFAULT_DATA_FILE_UPLOAD_CONCURRENCY: usize = 128;
 /// Default concurrency for iceberg file indices import.
 const DEFAULT_FILE_INDEX_IMPORT_CONCURRENCY: usize = 128;
-/// Default concurrency for iceberg deletion vector synchronize.
+/// Default concurrency for iceberg deletion vectors synchronization.
 const DEFAULT_SYNC_DELETION_VECTOR_CONCURRENCY: usize = 128;
 
 /// Results for importing data files into iceberg table.
@@ -233,6 +233,7 @@ impl IcebergTableManager {
         old_data_files: Vec<MooncakeDataFileRef>,
         data_file_records_remap: &HashMap<RecordLocation, RemappedRecordLocation>,
     ) -> IcebergResult<DataFileImportResult> {
+        // Record data files synchronization latency.
         let _guard = if new_data_files.is_empty() {
             None
         } else {
@@ -241,7 +242,6 @@ impl IcebergTableManager {
         let mut local_data_files_to_remote = HashMap::with_capacity(new_data_files.len());
         let mut new_remote_data_files = Vec::with_capacity(new_data_files.len());
         let mut new_iceberg_data_files = Vec::with_capacity(new_data_files.len());
-        // let _guard = self.iceberg_persistency_stats_sync_data_files.start();
 
         let iceberg_table = self.iceberg_table.clone();
         let filesystem_accessor = self.filesystem_accessor.clone();
@@ -608,7 +608,7 @@ impl IcebergTableManager {
         // After cache design, we should be able to provide a "handle" abstraction, which could be either local or remote.
         // The hash map here is merely a workaround to pass remote path to iceberg file index structure.
 
-        // Record file indices persistency latency
+        // Record file indices synchronization latency.
         let _guard = if file_indices_to_import.is_empty() && local_data_file_to_remote.is_empty() {
             None
         } else {

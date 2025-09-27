@@ -73,13 +73,13 @@ pub struct IcebergTableManager {
     /// Maps from remote data file path to its file id.
     pub(crate) remote_data_file_to_file_id: HashMap<String, FileId>,
 
-    /// Iceberg persistency stats for loading data files.
+    /// Iceberg persistency stats for synchroniziing data files.
     pub(crate) iceberg_persistency_stats_sync_data_files: Arc<IcebergPersistencyStats>,
 
-    /// Iceberg persistency stats for loading deletion vectors.
+    /// Iceberg persistency stats for synchroniziing deletion vectors.
     pub(crate) iceberg_persistency_stats_sync_deletion_vectors: Arc<IcebergPersistencyStats>,
 
-    /// Iceberg persistency stats for loading file indices.
+    /// Iceberg persistency stats for synchroniziing file indices.
     pub(crate) iceberg_persistency_stats_sync_file_indices: Arc<IcebergPersistencyStats>,
 }
 
@@ -115,7 +115,7 @@ impl IcebergTableManager {
             )),
             iceberg_persistency_stats_sync_deletion_vectors: Arc::new(
                 IcebergPersistencyStats::new(
-                    mooncake_table_id.clone(),
+                    mooncake_table_id,
                     IcebergPersistenceStage::DeletionVectors,
                 ),
             ),
@@ -157,7 +157,7 @@ impl IcebergTableManager {
             )),
             iceberg_persistency_stats_sync_deletion_vectors: Arc::new(
                 IcebergPersistencyStats::new(
-                    mooncake_table_id.clone(),
+                    mooncake_table_id,
                     IcebergPersistenceStage::DeletionVectors,
                 ),
             ),
